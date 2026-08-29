@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_WORKSPACE_ATTACHMENTS_FOLDER } from "../api";
 import { clearStagedAttachments } from "../promptAttachmentStaging";
-import { PromptEditor } from "./PromptEditor";
+import { attachmentFolderDeliveryLabel, PromptEditor } from "./PromptEditor";
 
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>();
@@ -40,6 +41,18 @@ function triggerSessionSwitch(editor: PromptEditor, previous: { machineId: strin
   const changed = new Map([["sessionId", previous.sessionId], ["machineId", previous.machineId]]);
   Reflect.apply(method, editor, [changed]);
 }
+
+describe("PromptEditor attachments folder label", () => {
+  it("defaults the attachments folder to the built-in default", () => {
+    expect(new PromptEditor().attachmentsFolder).toBe(DEFAULT_WORKSPACE_ATTACHMENTS_FOLDER);
+    expect(DEFAULT_WORKSPACE_ATTACHMENTS_FOLDER).toBe(".pi-web/attachments");
+  });
+
+  it("labels the folder delivery option with the workspace-effective folder", () => {
+    expect(attachmentFolderDeliveryLabel(".pi-web/attachments")).toBe("Save to .pi-web/attachments");
+    expect(attachmentFolderDeliveryLabel("docs/inbox")).toBe("Save to docs/inbox");
+  });
+});
 
 describe("PromptEditor pending attachments across session switches", () => {
   it("does not carry pending attachments from one session into another", () => {

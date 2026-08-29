@@ -5,7 +5,7 @@ import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view
 import { defaultHighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { LitElement, html, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
+import { api, DEFAULT_WORKSPACE_ATTACHMENTS_FOLDER, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
 import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, promptAttachmentsCanUseInlineDelivery } from "../promptAttachmentCapture";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
@@ -28,6 +28,8 @@ export class PromptEditor extends LitElement {
   @property() machineId = "local";
   @property() projectId?: string;
   @property() workspaceId?: string;
+  /** Workspace-effective folder shown for the "save to folder" attachment delivery. */
+  @property() attachmentsFolder = DEFAULT_WORKSPACE_ATTACHMENTS_FOLDER;
   @property({ type: Boolean }) canSteer = false;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Boolean }) canStop = false;
@@ -191,7 +193,7 @@ export class PromptEditor extends LitElement {
           <label class="attachment-delivery" title=${canUseInlineDelivery ? "How attachments are delivered to the agent" : "General files are saved and mentioned from the workspace"}>
             <select .value=${delivery} @change=${(event: Event) => { this.changeDelivery(event); }}>
               <option value="inline" ?disabled=${!canUseInlineDelivery}>Attach to message${canUseInlineDelivery ? "" : " (images only)"}</option>
-              <option value="folder">Save to .pi-web/attachments</option>
+              <option value="folder">${attachmentFolderDeliveryLabel(this.attachmentsFolder)}</option>
             </select>
           </label>
         ` : null}
@@ -552,6 +554,10 @@ function pendingToPromptAttachment(attachment: PendingAttachment): PromptAttachm
     return { kind: "image", mimeType: attachment.mimeType, data: attachment.data, name: attachment.name };
   }
   return { kind: "file", mimeType: attachment.mimeType, data: attachment.data, name: attachment.name };
+}
+
+export function attachmentFolderDeliveryLabel(folder: string): string {
+  return `Save to ${folder}`;
 }
 
 function fileExtensionLabel(name: string): string {
