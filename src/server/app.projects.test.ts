@@ -228,4 +228,34 @@ describe("buildApp project routes", () => {
       })],
     });
   });
+
+  it("exposes the project-local attachments override on a secondary workspace with no config of its own", async () => {
+    appTestContext.piWebConfig = { attachments: { defaultFolder: "global-attachments" } };
+    const addResponse = await appTestContext.app.inject({
+      method: "POST",
+      url: "/api/projects",
+      payload: { name: "Worktree Attachment Defaults", path: appTestContext.projectDir, create: true },
+    });
+    const project = addResponse.json<Project>();
+    await mkdir(join(appTestContext.projectDir, ".pi-web"), { recursive: true });
+    await writeFile(join(appTestContext.projectDir, ".pi-web", "config.json"), `${JSON.stringify({ version: 1, attachments: { defaultFolder: "project-attachments" } }, null, 2)}\n`);
+    // A linked worktree has no `.pi-web/config.json` of its own (the directory
+    // is gitignored), so its only source of the project override is the
+    // project-path-based effective config attached to the workspace listing.
+    const main = (await appTestContext.workspaceCatalog.resolveProject(project.id)).workspaces[0];
+    if (main === undefined) throw new Error("Expected a main workspace");
+    appTestContext.workspaceCatalog.set(project.id, [
+      main,
+      { id: "secondary-worktree", projectId: project.id, path: join(appTestContext.tempDir, "secondary-worktree"), label: "secondary-worktree", isMain: false },
+    ]);
+
+    const workspacesResponse = await appTestContext.app.inject({ method: "GET", url: `/api/projects/${project.id}/workspaces` });
+
+    expect(workspacesResponse.statusCode).toBe(200);
+    const resolution = workspacesResponse.json<WorkspaceProviderResolution>();
+    expect(resolution.workspaces).toHaveLength(2);
+    for (const workspace of resolution.workspaces) {
+      expect(workspace.effectiveConfig).toMatchObject({ attachments: { defaultFolder: "project-attachments" } });
+    }
+  });
 });

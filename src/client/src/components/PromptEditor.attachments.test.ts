@@ -54,6 +54,54 @@ describe("PromptEditor attachments folder label", () => {
   });
 });
 
+describe("PromptEditor folder delivery sends the displayed folder", () => {
+  // `send` is private; these tests drive it through Reflect the same way the
+  // session-switch suite above drives `willUpdate`, keeping the happy-dom
+  // harness out of a pure callback-wiring check.
+  function invokeSend(editor: PromptEditor): void {
+    const send: unknown = Reflect.get(editor, "send");
+    if (typeof send !== "function") throw new Error("PromptEditor.send was unavailable");
+    Reflect.apply(send, editor, []);
+  }
+
+  it("passes the workspace-effective attachments folder to onSend for folder delivery", () => {
+    const editor = new PromptEditor();
+    editor.machineId = "local";
+    editor.sessionId = "session-a";
+    editor.attachmentsFolder = "project-attachments";
+    // A general file forces folder delivery (inline is image-only).
+    Reflect.set(editor, "attachments", [{ id: "attachment-1", kind: "file" as const, name: "notes.txt", mimeType: "text/plain", data: "aGVsbG8=", size: 5 }]);
+    Reflect.set(editor, "draft", "check this");
+    const sent: unknown[][] = [];
+    editor.onSend = (...args: unknown[]) => { sent.push(args); };
+
+    invokeSend(editor);
+
+    // Label/save parity: the delivery label and the folder sent with the save
+    // request come from the same workspace-effective prop.
+    expect(attachmentFolderDeliveryLabel(editor.attachmentsFolder)).toBe("Save to project-attachments");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toEqual(["check this", undefined, [expect.objectContaining({ name: "notes.txt" })], "folder", "project-attachments"]);
+  });
+
+  it("omits the folder for inline delivery", () => {
+    const editor = new PromptEditor();
+    editor.machineId = "local";
+    editor.sessionId = "session-a";
+    editor.attachmentsFolder = "project-attachments";
+    Reflect.set(editor, "attachments", [{ id: "attachment-1", kind: "image" as const, name: "shot.png", mimeType: "image/png", data: "QUJD", size: 3 }]);
+    Reflect.set(editor, "draft", "look");
+    const sent: unknown[][] = [];
+    editor.onSend = (...args: unknown[]) => { sent.push(args); };
+
+    invokeSend(editor);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.[3]).toBe("inline");
+    expect(sent[0]?.[4]).toBeUndefined();
+  });
+});
+
 describe("PromptEditor pending attachments across session switches", () => {
   it("does not carry pending attachments from one session into another", () => {
     const editor = new PromptEditor();

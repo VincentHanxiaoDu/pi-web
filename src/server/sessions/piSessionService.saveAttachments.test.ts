@@ -83,6 +83,18 @@ describe("PiSessionService saveAttachments", () => {
     await expectSavedPath(service, "explicit-attachments", "explicit-attachments");
   });
 
+  it("lets an explicit request folder win over the session cwd's own project-local config", async () => {
+    const service = createService(fakeConfigRead({ attachments: { defaultFolder: "global-attachments" } }));
+    await mkdir(join(workspace, ".pi-web"), { recursive: true });
+    await writeFile(join(workspace, ".pi-web", "config.json"), `${JSON.stringify({ version: 1, attachments: { defaultFolder: "cwd-local-attachments" } }, null, 2)}\n`);
+
+    // The composer resolves the effective folder from the owning project's
+    // config and sends it explicitly, so a secondary (worktree) workspace —
+    // whose cwd has no, or a different, project-local config — still saves to
+    // the folder the label advertised.
+    await expectSavedPath(service, "project-attachments", "project-attachments");
+  });
+
   it("fails loudly when the config read fails instead of falling back silently", async () => {
     const service = createService({ read: () => Promise.reject(new Error("broken config file")) });
 

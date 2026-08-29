@@ -2476,14 +2476,21 @@ export class PiSessionService implements SessionRouteService {
     await this.assertWritable(ref);
     const active = await this.getActive(ref);
     const cwd = active.runtime.cwd;
+    // An explicit request folder wins; the config lookup below is only the
+    // fallback for folder-less calls (see workspaceAttachmentsConfig).
     const effectiveFolder = folder ?? (await this.workspaceAttachmentsConfig(cwd)).defaultFolder;
     return saveAttachmentsToWorkspace(cwd, parsed, effectiveFolder === undefined ? {} : { folder: effectiveFolder });
   }
 
   /**
-   * The workspace-effective attachments config for a session cwd: the live
-   * global config merged with the cwd's project-local override, mirroring
-   * `workspaceEffectiveConfig` in app.ts.
+   * Fallback attachments config for save requests that omit an explicit
+   * folder: the live global config merged with the session cwd's own
+   * project-local override. Unlike `workspaceEffectiveConfig` in app.ts (which
+   * resolves from the owning project's path), this lookup keys off the cwd
+   * itself, so for secondary (worktree) workspaces it cannot see the owning
+   * project's override. The composer therefore always sends the
+   * workspace-effective folder it displayed explicitly; this cwd-based
+   * resolution only governs folder-less API calls.
    */
   private async workspaceAttachmentsConfig(cwd: string): Promise<PiWebAttachmentsConfig> {
     const globalConfig = this.config === undefined ? {} : (await this.config.read()).effectiveConfig;
