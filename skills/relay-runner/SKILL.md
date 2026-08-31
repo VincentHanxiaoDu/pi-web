@@ -136,7 +136,7 @@ Write the profile's mechanics to `operations.md` instead:
 - packet root, working location, branch, immutable base commit, initial HEAD, pre-existing state, packet isolation, and exact review range;
 - focused and full verification commands;
 - commit policy: every leg that changes delivery files commits all and only its changes, including intended new files, before handoff, while packet updates remain isolated;
-- the three-attempt whole-work review/remediation policy and review-decision continuity;
+- the two-attempt normal whole-work review/remediation policy, exceptional third-attempt contingency, and review-decision continuity;
 - delivery mechanism; and
 - intervention signal and triggers supplied by this profile, the user, or repository.
 
@@ -148,7 +148,7 @@ After pointing the user at the final drafts, summarize the goal/edges, operating
 
 ### Approved-dispatch workflow
 
-After explicit approval, finalize all four documents, mark the packet approved, and record approval in status and log. Seed active leg tracking with last completed leg 0, the first leg identifier/task, targeted context, blockers, review attempts `0/3`, and any active pointers. In fresh-worktree mode, move the packet into the target worktree, update recorded paths and location facts, and remove the stale drafting copy before handoff.
+After explicit approval, finalize all four documents, mark the packet approved, and record approval in status and log. Seed active leg tracking with last completed leg 0, the first leg identifier/task, targeted context, blockers, `review attempts: 0`, `third-attempt contingency: unused`, and any active pointers. In fresh-worktree mode, move the packet into the target worktree, update recorded paths and location facts, and remove the stale drafting copy before handoff.
 
 Dispatch exactly one first leg with `spawn_session`, after all state is durable in its final location. Use the selected checkout/worktree as `cwd`. After `spawn_session` returns, report the Relay name, packet path, location and branch, interpreted finish line and material non-goals, delivery target, first leg, and dispatch confirmation. Perform no further operational action and never promise a total leg count.
 
@@ -186,7 +186,9 @@ Run whole-work review immediately before delivery and only after implementation 
 
 Approval means the reviewed evidence reasonably demonstrates the chartered finish line under the repository's canonical quality guidance; it does not claim the work is perfect or free of every possible defect. Reviewers are not expected or rewarded to produce findings. A clean approval is the correct result when no concretely supported blocker is found.
 
-Give the review phase a budget of **three consolidated whole-work review attempts** from implementation-complete through delivery. Record `review attempts: N/3` in status and append each attempt, base, and HEAD to the log. Initial review is attempt 1; each post-remediation or pre-delivery re-review increments the same counter. Focused subreviews consolidated by one reviewer are part of that one attempt, not separate attempts.
+Use **two normal whole-work review attempts** from implementation-complete through delivery: the initial review and, only when needed, one post-remediation or pre-delivery re-review. A third review is an exceptional contingency, not routine capacity or a target. Invoke it only under the attempt 2 finding rule below or when delivery finds that materially changed review inputs made the prior approval stale. Record `review attempts: N` and `third-attempt contingency: unused` in status, changing the contingency field to `invoked — <reason>` before using it. Append each attempt, base, and HEAD to the log. Focused subreviews consolidated by one reviewer are part of one attempt, not separate attempts.
+
+Attempt 1 is the only broad, proportionate review pass. Report its concretely supported blockers together rather than serializing already-known concerns across later attempts; this calls for a proportionate pass, not an exhaustive search. Later reviews still judge the exact delivery diff as a whole, but carry prior decisions forward and focus on remediation, changed evidence, and regressions. Do not restart review from zero, expand the audit surface, or apply a newly stricter standard because another attempt is available.
 
 For each attempt:
 
@@ -194,14 +196,15 @@ For each attempt:
 - Keep the reviewer report-only for implementation and delivery artifacts. Its only writes are packet updates needed to record review and handoff.
 - Confirm the full verification required by `operations.md` at the reviewed HEAD and record exact results.
 - Approve when no blocking finding meets the evidence threshold below, even if non-blocking limitations or theoretical risks remain. Record exact reviewed base and HEAD, point status at the approval, and name delivery as next.
-- When attempt 1 or 2 has blocking findings, record them in risk order in the log, name one coherent remediation leg in status with a targeted pointer, and dispatch it. The remediation runner fixes and commits only that task, then dispatches the next whole-work review attempt.
-- When attempt 3 still has any blocking finding, stop the automatic loop. Record the unresolved findings and exact decision needed, raise the human intervention signal, and do **not** dispatch remediation or a fourth review. A human may accept an authorized risk, change the agreement, stop the Relay, or explicitly grant a bounded additional remediation/review attempt.
+- When attempt 1 has blocking findings, record them in risk order in the log, name one coherent remediation leg in status with a targeted pointer, and dispatch it. Remediation runners resolve the recorded blockers in bounded slices and dispatch attempt 2 only after the attempt 1 report has been addressed; do not spend another whole-work review merely to reveal the next already-known item.
+- When attempt 2 has a blocking finding, do not automatically consume attempt 3. Invoke the remediation contingency only when concrete evidence shows that an attempted remediation reasonably expected to resolve a blocker did not, remediation introduced an in-scope regression, or materially new evidence reveals a blocker that could not reasonably have been assessed earlier—and one bounded remediation is likely to resolve it. Record that justification, mark the contingency invoked, and dispatch one coherent remediation leg followed by attempt 3. Expanded scrutiny, a changed standard, deferred already-available evidence, or speculative possibility does not qualify. If a genuine blocker remains but the contingency is not justified or bounded, intervene.
+- When exceptional attempt 3 still has any blocking finding, stop the automatic loop. Record the unresolved findings and exact decision needed, raise the human intervention signal, and do **not** dispatch remediation or a fourth review. A human may accept an authorized risk, change the agreement, stop the Relay, or explicitly grant a bounded additional remediation/review attempt.
 
 The reviewer chooses proportionate independent review and records that decision. Independent subreviews are optional; use them only when a specific changed surface benefits from focused expertise, not to create review theater or increase the chance of finding something. The reviewer may use `spawn_subsession` for report-only focused reviews, then `yield_to_subsessions` and consolidate. Subreview prompts must identify repository, base and exact diff, the charter's goal and edges, canonical quality instructions, and the prohibition on all writes including packet changes. The consolidating reviewer is the sole packet writer. Do not assume a particular model is available. The Relay handoff still uses one `spawn_session` only at the end of the leg.
 
 A blocking finding needs concrete evidence of an in-scope defect: for example a reproduced failure, a failing relevant check, a specific execution path that violates the approved outcome, or a clear breach of a material contract, invariant, security, authorization, or data-integrity boundary. Mere possibility, stylistic preference, optional hardening, hypothetical future requirements, or “there could be an edge case” is not blocking. If proportionate targeted inspection cannot establish applicability and impact, classify the concern as non-blocking or omit it rather than forcing remediation.
 
-Decide materiality from the charter's goal and edges and the repository's canonical guidance, not from a reviewer-created standard. A concern outside those authorities is non-blocking or out of scope even when it describes a possible improvement. Non-blocking findings do not prevent approval or consume a remediation leg. Do not turn review into an audit of unrelated pre-existing shortcomings.
+Review cannot over-specify the agreement. Decide materiality from the charter's goal and edges and the repository's canonical guidance, not from a reviewer-created standard. A concern outside those authorities is non-blocking or out of scope even when it describes a possible improvement. Non-blocking findings do not prevent approval or consume a remediation leg. Do not turn review into an audit of unrelated pre-existing shortcomings.
 
 ### Review-decision continuity
 
@@ -219,7 +222,7 @@ The final leg performs only the delivery mechanism recorded in `operations.md`.
 
 1. Read the targeted approval entry cited by status.
 2. Verify that the integration base still resolves to the reviewed base commit, HEAD equals the reviewed HEAD, and the working tree matches the allowable state recorded in `operations.md`, normally clean apart from the packet.
-3. If the base advanced or expected in-scope work changed, dispatch a fresh whole-work review only when the three-attempt budget has room; otherwise intervene. If the mismatch is unrelated, unexpected, or of unclear ownership, intervene.
+3. If the base advanced or expected in-scope work changed, intervene when the mismatch is unrelated, unexpected, or of unclear ownership. Otherwise dispatch a fresh whole-work review when a normal attempt remains. After two attempts, invoke the exceptional third only when the changed inputs materially invalidate the prior approval and a targeted review can assess the new exact range; record that reason before dispatch. If neither condition applies, intervene.
 4. Create or update the recorded pull/merge request, push the branch, produce the agreed patch, or leave the agreed clean committed local branch. Do not invent delivery infrastructure the repository does not use.
 5. State what changed and why, behavioral or contract changes, migration or deployment ordering when applicable, and exact verification with results.
 6. Record the delivery result—URL, pushed branch, patch path, or local commit/branch—in status and log before declaring completion. Required push, authentication, or review-tool failure is intervention, not completion.
@@ -235,7 +238,7 @@ Stop, update status, append the log, surface the intervention signal recorded in
 - proceeding would knowingly weaken a material invariant or security/authorization boundary;
 - unexpected unrelated branch changes make ownership or the review range unclear;
 - required delivery or authentication fails;
-- the three-attempt whole-work review budget is exhausted without approval;
+- review remains blocked after the normal attempts and the third-attempt contingency is unavailable or exhausted;
 - the finish line is infeasible; or
 - another user-, repository-, charter-, or operations-defined trigger fires.
 

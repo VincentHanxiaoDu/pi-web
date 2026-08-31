@@ -109,12 +109,20 @@ describe("Relay Pi package resources", () => {
     expect(content).toContain("canonical skills and documentation directly");
   });
 
-  it("bounds the opinionated review/remediation loop", async () => {
+  it("keeps review evidence-based and makes a third attempt exceptional", async () => {
     const content = await readFile(join(__dirname, "..", "..", "skills", "relay-runner", "SKILL.md"), "utf8");
 
-    expect(content).toContain("three consolidated whole-work review attempts");
+    expect(content).toContain("two normal whole-work review attempts");
+    expect(content).toContain("A third review is an exceptional contingency");
+    expect(content).toContain("not an exhaustive search");
+    expect(content).toContain("carry prior decisions forward");
+    expect(content).toContain("do not automatically consume attempt 3");
+    expect(content).toContain("materially changed review inputs made the prior approval stale");
+    expect(content).toContain("Review cannot over-specify the agreement");
     expect(content).toContain("Reviewers are not expected or rewarded to produce findings");
     expect(content).toContain("do **not** dispatch remediation or a fourth review");
+    expect(content).not.toContain("review attempts: N/3");
+    expect(content).not.toContain("review attempts `0/3`");
   });
 });
 
