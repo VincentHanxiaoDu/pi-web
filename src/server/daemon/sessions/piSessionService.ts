@@ -94,7 +94,8 @@ import type { PendingExtensionDialog } from "../../../shared/apiTypes.js";
 import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDialogCancelValue } from "./extensionDialogWaiters.js";
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import { createSpawnSessionToolDefinition, type SpawnSessionInvocation, type SpawnSessionResult } from "./spawnSessionTool.js";
-import { countBackgroundRuns } from "./backgroundRunCount.js";
+import { createBackgroundRunCountCycle } from "./backgroundRunCount.js";
+import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { listBackgroundTasks, readTaskOutput } from "./backgroundTasks.js";
 import { findSubagentRunTranscript, listSubagentRuns, readSessionEntries, readSubagentRunOutput } from "./subagentRuns.js";
 import { createSubsessionToolDefinitions, type SpawnSubsessionInvocation, type SpawnSubsessionResult, type SubsessionCheckResult, type SubsessionReadQuery, type SubsessionReadResult, type SubsessionStatus, type SubsessionSummary, type SubsessionToolDeps } from "./spawnSubsessionTool.js";
@@ -1196,6 +1197,8 @@ export class PiSessionService implements SessionRouteService {
   /** Last counted background runs per open session; see refreshBackgroundRunCounts. */
   private readonly backgroundRunCounts = new Map<string, number>();
   private backgroundRunScanInFlight = false;
+  private backgroundRunRefreshRequested = true;
+  private readonly backgroundWorkWatcher: BackgroundWorkWatcher;
   private readonly heartbeat: NodeJS.Timeout;
   private readonly commandService: SessionCommandService<PiAgentSession>;
   /** Runtime-identity gate held while Pi may await abandoned-branch summarization. */
@@ -1336,6 +1339,10 @@ export class PiSessionService implements SessionRouteService {
     );
     this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
     this.workspaceActivity = deps.workspaceActivity;
+    this.backgroundWorkWatcher = new BackgroundWorkWatcher(() => {
+      this.backgroundRunRefreshRequested = true;
+      void this.refreshBackgroundRunCounts();
+    });
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
       (sessionId) => this.getActive(this.activeSessionRef(sessionId)),
@@ -1515,6 +1522,7 @@ export class PiSessionService implements SessionRouteService {
     this.clearUnreadPublicationRetry();
     clearInterval(this.heartbeat);
     this.clearCompactionDrainTimers();
+    this.backgroundWorkWatcher.dispose();
     // Same startup-park hazard as closeActive(): settle `session_start` dialogs
     // of sessions still binding extensions before awaiting their pending opens.
     for (const sessionId of this.startupSessions.keys()) this.endSessionExtensionDialogs(sessionId);
@@ -3688,6 +3696,7 @@ export class PiSessionService implements SessionRouteService {
     // Promises inside the dying runtime: settle them rather than dropping them.
     this.endSessionExtensionDialogs(sessionId);
     this.active.delete(sessionId);
+    this.backgroundWorkWatcher.forget(sessionId);
     this.activities.delete(sessionId);
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
@@ -4009,6 +4018,9 @@ export class PiSessionService implements SessionRouteService {
         }
       });
       this.active.set(runtime.session.sessionId, active);
+      this.watchBackgroundWork(runtime.session);
+      this.backgroundRunRefreshRequested = true;
+      void this.refreshBackgroundRunCounts();
       if (notificationOwnership === "replacement" && notificationGeneration !== undefined) {
         this.publishNotificationMutations(this.notificationStore.commitReplacement(notificationGeneration));
         notificationOwnership = "external";
@@ -4832,15 +4844,21 @@ export class PiSessionService implements SessionRouteService {
    */
   private async refreshBackgroundRunCounts(): Promise<void> {
     if (this.backgroundRunScanInFlight) return;
+    const open = [...this.active.values()].map((active) => active.runtime.session);
+    for (const session of open) this.watchBackgroundWork(session);
+    const needsFallback = open.some((session) => !this.backgroundWorkWatcher.isHealthy(this.backgroundWorkTarget(session)));
+    const hasKnownRunningWork = open.some((session) => (this.backgroundRunCounts.get(session.sessionId) ?? 0) > 0);
+    if (!this.backgroundRunRefreshRequested && !needsFallback && !hasKnownRunningWork) return;
     this.backgroundRunScanInFlight = true;
+    this.backgroundRunRefreshRequested = false;
     try {
-      const open = [...this.active.values()].map((active) => active.runtime.session);
       const openIds = new Set(open.map((session) => session.sessionId));
       for (const sessionId of [...this.backgroundRunCounts.keys()]) {
         if (!openIds.has(sessionId)) this.backgroundRunCounts.delete(sessionId);
       }
+      const counter = createBackgroundRunCountCycle();
       for (const session of open) {
-        const count = await countBackgroundRuns({
+        const count = await counter.count({
           cwd: session.sessionManager.getCwd(),
           sessionFile: session.sessionManager.getSessionFile(),
           parentActive: session.isStreaming,
@@ -4854,6 +4872,18 @@ export class PiSessionService implements SessionRouteService {
     } finally {
       this.backgroundRunScanInFlight = false;
     }
+  }
+
+  private watchBackgroundWork(session: PiAgentSession): void {
+    this.backgroundWorkWatcher.update(this.backgroundWorkTarget(session));
+  }
+
+  private backgroundWorkTarget(session: PiAgentSession) {
+    return {
+      sessionId: session.sessionId,
+      cwd: session.sessionManager.getCwd(),
+      sessionFile: session.sessionManager.getSessionFile(),
+    };
   }
 
   /**

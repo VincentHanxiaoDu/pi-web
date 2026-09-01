@@ -23,7 +23,7 @@ describe("prompt-editor send failure", () => {
     await submit(editor);
 
     expect(onSend).toHaveBeenCalled();
-    expect(draft(editor)).toBe("a long message worth keeping");
+    await vi.waitFor(() => { expect(draft(editor)).toBe("a long message worth keeping"); });
   });
 
   it("restores the attachments too", async () => {
@@ -38,8 +38,10 @@ describe("prompt-editor send failure", () => {
     await submit(editor);
 
     // Re-picking a screenshot from a share sheet is often impossible.
-    expect(shadow(editor).querySelectorAll(".attachment-chip")).toHaveLength(1);
-    expect(draft(editor)).toBe("look at this");
+    await vi.waitFor(() => {
+      expect(shadow(editor).querySelectorAll(".attachment-chip")).toHaveLength(1);
+      expect(draft(editor)).toBe("look at this");
+    });
   });
 
   it("saves a network-dropped send to the outbox instead of restoring the draft", async () => {
@@ -61,7 +63,7 @@ describe("prompt-editor send failure", () => {
 
     await submit(editor);
 
-    expect(draft(editor)).toBe("rejected but not dropped");
+    await vi.waitFor(() => { expect(draft(editor)).toBe("rejected but not dropped"); });
   });
 
   it("keeps the composer clear when the send succeeds", async () => {
@@ -112,31 +114,14 @@ async function mount(onSend: SendHandler): Promise<PromptEditor> {
   editor.onSend = onSend;
   document.body.append(editor);
   await editor.updateComplete;
-  // The CodeMirror module is loaded lazily, and every assertion here reads the
-  // editor's document. Waiting for the view itself rather than a fixed sleep
-  // keeps the test honest on a slow machine: a fixed 200ms passed on CI and
-  // failed locally under load, which reads as a broken restore when the only
-  // thing that was late is the editor's mount.
-  await settleEditorView(editor);
+  await vi.waitFor(() => { expect(editor.view).toBeDefined(); });
   return editor;
-}
-
-async function settleEditorView(editor: PromptEditor): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (editor.view !== undefined) return;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error("The prompt editor's view never mounted");
 }
 
 async function submit(editor: PromptEditor): Promise<void> {
   const button = shadow(editor).querySelector<HTMLButtonElement>(".send-button");
   if (button === null) throw new Error("Expected a send button");
   button.click();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await editor.updateComplete;
-  // The send handler settles in its own microtask chain and the restore lands
-  // after it; give that chain its turns before reading the document.
   await new Promise((resolve) => setTimeout(resolve, 0));
   await editor.updateComplete;
 }

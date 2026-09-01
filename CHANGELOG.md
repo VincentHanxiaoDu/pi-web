@@ -1,69 +1,13 @@
 # @vincenthanxiaodu/pi-web
 
-## 1.202608.79
-
-### Patch Changes
-
-- 700741a: Typing `/` offers commands again in a session whose workspace has not resolved. The composer looked up slash commands against the selected workspace's directory alone, and the lookup is guarded on a non-empty directory — so a session reached before its workspace landed (a quick-switcher pick into another project, a route restored session-first) silently offered no completions while the rest of the composer kept working. The composer now falls back to the session's own directory, which is what it is composing into.
-
-  Also repairs the release gate: the package smoke test still asserted the pre-layout-split terminal service path (`dist/server/terminals/...`), so it failed on a package that was in fact correct.
-
-- 88da8a1: Tolerate package-owned global systemd drop-ins when inspecting managed services, so `pi-web install`, `start`, and `doctor` work on stock Fedora and Bluefin (whose `service.d/10-timeout-abort.conf` applies to every user service). Overrides that alter the managed environment still fail closed.
-
 ## 1.202608.78
 
 ### Patch Changes
 
-- c34b0a3: Add an `attachments.defaultFolder` config key to customize where chat-composer prompt attachments are saved, mirroring `uploads.defaultFolder`: set it in the global config file or Settings → General for the selected machine, override it per project in `<project>/.pi-web/config.json`, and see the workspace-effective folder in the composer's "Save to …" delivery option. Without configuration, attachments are still saved to `.pi-web/attachments`, and an explicit per-request folder keeps winning over the configured default.
-- The web/API process watches its own event loop and restarts under launchd
-  instead of hanging.
-
-  A single blocked filesystem operation (one stalled directory open) parks all
-  four libuv threadpool workers; every async fs and DNS call then queues forever
-  while the event loop idles. The process stays alive and listening — the TCP
-  handshake completes from the kernel backlog — but no request is ever answered,
-  and KeepAlive sees a healthy pid it has no reason to restart. Observed live on
-  8504: the page stopped responding for minutes until a manual restart.
-
-  Two halves, both behind this change: a heartbeat watchdog exits the process
-  when the loop stalls past a 60-second budget (launchd restarts it), and
-  managed services install with `UV_THREADPOOL_SIZE=16`, so one stalled
-  operation is a slowdown instead of an outage. The waiting slot also caps
-  itself at a hard 760px on very tall displays, where 60vh alone grew a
-  question past one glance.
-
-- 30cf9e2: An assistant reply no longer renders twice when its own tool runs land between the streamed text and the final message: the finalizer now walks back over the reply's tool rows to replace the half-done line in place.
+- 0e1f150: Improve iPhone and iPad Safari home-screen installation with standalone app metadata, icon sizing, and installation guidance.
+- f05f006: Add reproducible Nix flake packages and Home Manager service configuration for NixOS and Apple Silicon nix-darwin.
 - f816309: Update the pi SDK to 0.84.4 (both packages together, which is what makes the earlier attempt's type conflicts disappear).
-- c9c06ea: Bound the idle-session transcript snapshot cache so a long-running session daemon no longer accumulates the parsed transcript of every session ever polled; snapshots are now evicted least-recently-used first past a small limit.
-
-  Fix status and message reads for idle sessions whose transcript file does not exist on disk (never persisted yet, or removed externally): they now serve the live runtime branch instead of failing.
-
-  Speed up polling of an idle session whose transcript file keeps growing: when another process appends to the file, only the appended bytes are read and parsed instead of the whole transcript being re-read every few seconds. Any change other than a pure append (replacement, truncation, in-place rewrite) still triggers a full re-read.
-
-  Stop polling of a never-persisted session from rescanning its session directory on every tick: transcript file resolution is now throttled, so an idle in-memory session polls at constant cost while still noticing a transcript file that appears later.
-
-  Stop a failing background poll of the selected session from churning the global error banner every few seconds: automatic poll failures are now only logged, while user-triggered refreshes still report errors.
-
-  Skip redundant work when a poll of the selected session changes nothing: a tick whose messages, status, and in-flight partial all match what is already shown no longer re-merges history, rewrites the cached transcript, or re-renders.
-
-- Quick switcher picks now move the browser to another project's workspace.
-
-  The switcher lists sessions from every project, but choosing one resolved its
-  workspace against the selected project's workspaces alone. A pick from another
-  project failed that resolution and left the workspace, project, goal panel and
-  URL describing the previous project — the goal panel showed the other
-  project's goal with live Pause and Abandon buttons, and a refresh could not
-  find the session you had just picked. Ancestry now resolves against a full
-  workspace catalogue, and a goal panel whose selected session's directory sits
-  outside the selected workspace reads as unloaded instead of borrowing that
-  workspace's records.
-
-- 7149fe4: Keep selected sessions current when another Pi process appends to their transcript, without replacing active Pi Web runtimes.
-- cf7cb35: Split Relay into a tool-agnostic foundation and an opinionated `relay-runner` software-delivery profile, make `/relay` build reviewable drafts and require explicit approval only before dispatch without pre-planning the chain, keep charters centered on goals and scope edges while project guidance owns quality, retain `/relay-worktree` as a compatibility alias, make handoff the final operational action while allowing a dispatch summary, require review, approval, and delivery before Relay completion, and treat two whole-work review attempts as normal while reserving a third for a justified contingency before human intervention.
 - 92cb024: Reorganize `src/server` by process ownership: modules loaded only by the web/API process now live under `src/server/web/`, session-daemon-only modules under `src/server/daemon/`, and modules shared by both processes under `src/server/shared/`. The former `src/sessiond/` daemon client moved to `src/server/shared/sessiondClient/`, and the mixed `src/server/sessiond/` directory was dissolved into its web and daemon sides. Entry points (`src/server/index.ts`, `src/server/sessiond.ts`) and published bin paths are unchanged; no runtime behavior changes.
-- Clock a turn from the daemon's recorded turn start, not from the viewer's first sighting. The session snapshot now carries `turnStartedAt` — the branch entry that started the turn (a custom message's timestamp, else the latest user message's) — and the transcript clock continues from it. A tab that joins mid-turn, reloads, or reconnects now shows the turn's real elapsed time instead of restarting the clock at the moment it happened to look; a daemon without the field degrades to the previous first-observation anchor.
-- 460a04b: Rework the Updates workspace tab so it presents a single prominent action: when an update or restart is available, the recommended command now sits at the top with the status notices folded in as context, installed services stay in the middle, and optional finer-control commands move to the bottom. Notices no longer carry their own command buttons, so the panel never shows two competing recommended actions.
-- The waiting slot owns the height budget once: every waiting card (goal drafts, questions) fills it as a flex column whose body scrolls internally and whose action row stays on screen. The ask-user card's submit no longer lands below the fold on tall questions.
 
 ## 1.202608.77
 
@@ -1303,38 +1247,6 @@ hover)`, with an invariant test so the rule cannot grow back one file at a time.
   Fix machine renaming: the Settings → Machines rename form never appeared because its state was not reactive, and the local machine had no row menu at all. Every machine now offers Rename from its row menu in the machine list, including the local one, where the new name is stored as a display alias.
 
 - Show subagent tool runs as what they are. A run's directory is named after the child session while its results are filed under the subagent tool's own run id, and PI WEB assumed the two matched: every finished run showed as "Unknown" with the generic name "subagent", lost its task and model, and could not be opened because its result looked absent. The two are now joined through the name the child session records for itself, so a finished run shows its agent, its verdict, its task and its output. Runs with no result file yet — including ones still going — open their own transcript instead of nothing.
-
-## 1.202608.2
-
-### Upgrade warnings
-
-- **Breaking project-trust default — existing projects may need to be trusted again:** PI WEB now always enforces Pi's project-trust model and removes the `respectProjectTrust` opt-in environment variable and config key. After upgrading, a workspace without a saved trust decision becomes untrusted, so its project-local `.pi/` resources do not load until you trust the workspace from the workspace menu or while adding the project, or set `defaultProjectTrust` to `always`.
-- **Restart the session daemon after upgrading** on every machine so the project-trust enforcement, enabled-model synchronization, Pi version reporting, and Relay package auto-installation take effect.
-
-### Patch Changes
-
-- 62f704a: Add a search box to the provider selection list in the authentication dialog, so long subscription/credential provider lists can be narrowed by name or id. The search also applies to the stored-credential removal step.
-- 2d60542: Make `pi-web doctor` exit nonzero when an installed Web/UI or session daemon component is unavailable or stale (restart needed), instead of only reporting it in the version section. Machines with no PI WEB services installed keep the previous informational behavior.
-- 0b6497b: Trim surrounding whitespace from the path when adding a project, so the stored project matches the path the trust preview showed and no whitespace-padded folder is created.
-- e31d283: Fix the Add Project dialog showing "Loading folders…" forever without folder suggestions once a path was typed.
-- 70cb7ee: Fix pending file/image attachments in the chat composer leaking into other sessions when switching sessions, or vanishing while a new session was still being provisioned.
-- 7344b31: Fix the prompt editor caret height before any text is entered, and keep the caret and selection highlight colors readable in every theme.
-- 321de5d: Honor pi's global and project `enabledModels` settings in session model selection and cycling.
-- 3369cc9: **Breaking change — existing projects may need to be trusted again.** PI WEB now always honors Pi's project-trust model and removes the `respectProjectTrust` opt-in environment variable and config key. After upgrading, an existing workspace without a saved trust decision becomes untrusted by default, so its project-local `.pi/` resources — settings, extensions, skills, prompts, themes, `SYSTEM.md`, and `APPEND_SYSTEM.md` — do not load until you trust the workspace or set `defaultProjectTrust` to `always`.
-
-  At session start, project-local `.pi/` resources load only when the workspace is trusted. Trust is resolved the way `pi` resolves it with no browser prompt: a saved decision in the agent directory's `trust.json` wins, a user/global extension may decide through the `project_trust` event (and request that the choice be remembered), and otherwise `defaultProjectTrust` applies. With `ask` or no decision, a workspace is untrusted, matching headless `pi`.
-
-  You can trust a workspace from the new workspace-menu toggle or when adding a project; both link to the project-trust documentation. The trust routes are federated, so the toggle reads and stores the decision on the machine where the workspace runs.
-
-- 6db7a72: Report the Pi coding agent version in use: the Info panel and its diagnostics action now show the Pi version loaded by each PI WEB component (flagging when the session daemon runs a different one), the status/version API exposes it per component, and the `pi-web` CLI version report prints it.
-- 5ceeeac: Keep the session bulk-selection toolbar visible while scrolling and use consistent scroll-edge shadows as project, workspace, and session rows pass beneath fixed navigation controls.
-- 679a956: Add an Enabled / All models toggle to the session model picker. All-models mode lists the machine's full model catalog — enabled models first — with a per-model checkbox that adds or removes the model from Pi's enabled-models list (the same setting the Pi TUI edits), and search keeps filtering in both modes. Picking a model keeps its current behavior.
-- e71cc3c: Improve the model picker's All models view with stable natural row positions and an atomic Select all / Deselect all action. Membership edits now preserve the user's scroll position instead of moving the edited model, and rows change availability without switching models or closing the dialog.
-- db0202c: Make the shipped Relay prompts preserve a minimal agreed scope, apply a proportionate quality bar that favors observable and recoverable failure over speculative edge-case automation, plan adaptive context-contained legs instead of a fixed session sequence, carry review dispositions across reviewers, permit explicitly bounded transitional checkpoints, discover each repository's delivery workflow, keep whole-work review report-only, and track structured handoff identifiers durably.
-- 1e52e0b: Recognize Relay handoff session names whose leg identifiers contain letters or dashes.
-- fb0b28e: Ship Relay as the standalone `@jmfederico/pi-relay` Pi package, sourced from `pi-packages/relays/` and included at `dist/pi-packages/relays/`. Installing the package provides `/relay`, `/relay-worktree`, the `relay` skill, and the Relays PI WEB browser panel/action; Pi package removal removes those package contributions, while `plugins.relays.enabled` only shows or hides the browser panel/action. At session-daemon startup, PI WEB auto-installs Relay for the active agent profile unless that profile previously removed it from **Settings → Pi packages**, and **Available packages** offers one-click reinstall. The shipped path also supports explicit `pi install <path>` outside PI WEB; publishing `@jmfederico/pi-relay` to npm remains deferred.
-- b4f68fb: Fix `pi-web restart` on macOS reporting success while LaunchAgents could disappear: the CLI now waits for each `launchctl bootout` to finish unloading before re-bootstrapping the service instead of racing launchd's asynchronous teardown, and the install path settles the same way. `pi-web start` and `pi-web restart` now also verify on macOS and Linux that each service is actually running and responsive (web/API endpoint, session daemon health), exiting nonzero and naming the unready service instead of succeeding silently. These readiness checks and `pi-web doctor` automatically use the custom config path persisted by `pi-web install --config` unless the command is invoked with a nonempty `PI_WEB_CONFIG` override, and fail safely when the service manager has a conflicting loaded definition; malformed systemd environment entries are rejected without stalling lifecycle commands.
-- 5d40701: Synchronize global enabled-model selections across active sessions without requiring sessions to be reopened, while keeping workspace `.pi/settings.json` overrides isolated and read-only in the picker.
 
 ## 1.202608.1
 
