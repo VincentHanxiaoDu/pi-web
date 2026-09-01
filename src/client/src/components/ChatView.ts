@@ -857,6 +857,17 @@ export class ChatView extends LitElement {
   private restoreScrollFrame: number | undefined;
   private prependRestoreToken = 0;
   @state() private loadMoreRequested = false;
+  /**
+   * The first group index the transcript renders, or undefined to follow the
+   * tail. A long session that has been paged back through the transcript can
+   * hold thousands of live DOM rows; layout and touch scrolling degrade
+   * visibly long before memory does. Only the newest RENDER_WINDOW_GROUPS
+   * groups mount, scrolling toward the top reveals older ones in window-sized
+   * steps (each re-anchored through the same prepend machinery the pager
+   * uses), and the server-side pages themselves are untouched — the window is
+   * a rendering decision, not a data decision.
+   */
+  private renderWindowStart: number | undefined;
   private readonly onViewportResize = () => {
     if (this.pinnedToBottom) this.scrollToBottom();
     else this.lastClientHeight = this.chat?.clientHeight ?? 0;
@@ -935,6 +946,7 @@ export class ChatView extends LitElement {
     this.scrollController.clearScheduledSave();
     this.suppressScrollSave = false;
     this.suppressLoadMoreRequests = false;
+    this.renderWindowStart = undefined;
     this.pendingScrollRestoreSessionId = undefined;
     this.pendingScrollRestorePosition = undefined;
     this.heldWaiting = undefined;
@@ -1940,6 +1952,14 @@ export class ChatView extends LitElement {
    * Keep the turn clock in step with the session's own state: it starts when
    * work starts, stops when the session goes quiet, and ticks only while the
    * dock is showing an elapsed time.
+   *
+   * The anchor is the daemon's own turn start (the transcript's last input
+   * boundary) whenever the status carries one: switching back to a working
+   * session then continues the clock instead of re-starting it from the
+   * moment this tab happened to look — which made a turn that had been
+   * running for minutes read as freshly started, and made "is this stuck?"
+   * unanswerable. A daemon without the field (older build) degrades to the
+   * first-observation anchor it always used.
    */
   private syncTurnClock(): void {
     const working = this.isSessionLive();
@@ -1948,7 +1968,9 @@ export class ChatView extends LitElement {
       this.stopTurnClock();
       return;
     }
-    this.turnStartedAtMs ??= Date.now();
+    const daemonAnchor = Date.parse(this.status?.turnStartedAt ?? "");
+    if (Number.isFinite(daemonAnchor)) this.turnStartedAtMs = daemonAnchor;
+    else this.turnStartedAtMs ??= Date.now();
     this.turnNowMs = Date.now();
     if (this.turnClockTimer !== undefined) return;
     // Surface backed up: the turn-elapsed readout. A 1s display tick, not a
