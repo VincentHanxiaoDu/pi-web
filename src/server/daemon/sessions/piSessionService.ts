@@ -4807,8 +4807,8 @@ export class PiSessionService implements SessionRouteService {
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       isBashRunning: session.isBashRunning,
-      // The turn's own start, read off the transcript: a browser that switches
-      // back to a working session anchors its elapsed readout here instead of
+      // The turn's own start, read off the transcript: a browser that joins a
+      // working session mid-turn anchors its elapsed readout here instead of
       // re-clocking from the moment it happened to look.
       ...(turnStartedAt === undefined ? {} : { turnStartedAt }),
       pendingMessageCount: visibleQueued.length,
@@ -5411,11 +5411,11 @@ function clearSessionQueue(session: PiAgentSession): void {
  * When the working turn began, read from the transcript itself.
  *
  * The turn's start is its last input boundary: the newest user message (a
- * submitted prompt, a steer, an answered question) or the newest goal
- * checkpoint that triggered a turn. Scanning from the tail skips assistant
- * and tool entries so mid-turn activity cannot move the anchor; a branch
- * with no input at all yields undefined and the client clocks from when it
- * first looked, which is at least the moment it joined.
+ * submitted prompt, a steer, an answered question) or the newest custom entry
+ * that triggered a turn. Scanning from the tail skips assistant and tool
+ * entries so mid-turn activity cannot move the anchor; a branch with no input
+ * at all yields undefined, and the client then clocks from when it first saw
+ * the session working, which is at least an honest lower bound.
  */
 export function turnStartedAtFromBranch(branch: readonly unknown[]): string | undefined {
   for (let index = branch.length - 1; index >= 0; index -= 1) {

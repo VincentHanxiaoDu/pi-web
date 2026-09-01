@@ -285,24 +285,6 @@ export function workspaceSelectionKey(state: Pick<AppState, "selectedMachine" | 
 }
 
 /**
- * The directory the composer resolves slash commands and file references
- * against.
- *
- * The selected workspace is the refinement; the session being composed into
- * is the source of truth. Reading only the workspace handed the editor an
- * empty cwd whenever the workspace had not resolved — a quick-switcher pick
- * into another project, a restored route that landed on the session first —
- * and the command lookup is guarded on a non-empty cwd, so typing "/" quietly
- * offered nothing while the rest of the composer kept working.
- */
-export function composerCwd(state: Pick<AppState, "selectedSession" | "selectedWorkspace">): string | undefined {
-  const workspacePath = state.selectedWorkspace?.path;
-  if (workspacePath !== undefined && workspacePath !== "") return workspacePath;
-  const sessionCwd = state.selectedSession?.cwd;
-  return sessionCwd === undefined || sessionCwd === "" ? undefined : sessionCwd;
-}
-
-/**
  * Whether the selected session's own directory belongs to the selected
  * workspace: the workspace itself or a subdirectory of it. A session whose
  * cwd escaped the workspace (a quick-switcher pick whose ancestry has not
@@ -366,6 +348,23 @@ export function resetWorkspaceScopedState(): WorkspaceScopedStateReset {
     selectedTerminalId: undefined,
     error: "",
   };
+}
+
+/**
+ * The directory the composer resolves slash commands against.
+ *
+ * The selected workspace is the refinement; the session being composed into
+ * is the source of truth. Reading only the workspace handed the editor an
+ * empty cwd whenever the workspace had not resolved yet — a session opened
+ * before its workspace listing landed, a route restored session-first — and
+ * the command lookup is guarded on a non-empty cwd, so typing "/" quietly
+ * offered nothing while the rest of the composer kept working.
+ */
+export function composerCwd(state: Pick<AppState, "selectedSession" | "selectedWorkspace">): string | undefined {
+  const workspacePath = state.selectedWorkspace?.path;
+  if (workspacePath !== undefined && workspacePath !== "") return workspacePath;
+  const sessionCwd = state.selectedSession?.cwd;
+  return sessionCwd === undefined || sessionCwd === "" ? undefined : sessionCwd;
 }
 
 export function initialAppState(): AppState {

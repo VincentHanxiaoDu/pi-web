@@ -1327,9 +1327,9 @@ export interface SessionStatus {
   persisted?: boolean;
   /**
    * When the working turn began, read off the transcript (its last input
-   * boundary). Present only while the session is working and only from a
-   * daemon that publishes it; a browser that arrives late anchors its elapsed
-   * readout here instead of re-clocking from the moment it looked.
+   * boundary). Present only while the session is working, and only from a
+   * daemon that publishes it; a browser that joins mid-turn anchors its
+   * elapsed readout here instead of clocking from when it first looked.
    */
   turnStartedAt?: string;
   model?: SessionModel;
