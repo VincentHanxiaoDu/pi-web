@@ -1,5 +1,15 @@
 # @vincenthanxiaodu/pi-web
 
+## 1.202608.79
+
+### Patch Changes
+
+- 700741a: Typing `/` offers commands again in a session whose workspace has not resolved. The composer looked up slash commands against the selected workspace's directory alone, and the lookup is guarded on a non-empty directory — so a session reached before its workspace landed (a quick-switcher pick into another project, a route restored session-first) silently offered no completions while the rest of the composer kept working. The composer now falls back to the session's own directory, which is what it is composing into.
+
+  Also repairs the release gate: the package smoke test still asserted the pre-layout-split terminal service path (`dist/server/terminals/...`), so it failed on a package that was in fact correct.
+
+- 88da8a1: Tolerate package-owned global systemd drop-ins when inspecting managed services, so `pi-web install`, `start`, and `doctor` work on stock Fedora and Bluefin (whose `service.d/10-timeout-abort.conf` applies to every user service). Overrides that alter the managed environment still fail closed.
+
 ## 1.202608.78
 
 ### Patch Changes
