@@ -31,7 +31,11 @@ async function buildAll() {
     await rm(target.outDir, { recursive: true, force: true });
     const result = await buildDirectory(target.rootDir, target.outDir);
     const suffix = result.transpiled === 1 ? "file" : "files";
-    console.log(`[plugins] built ${String(result.transpiled)} TypeScript ${target.label} ${suffix} into ${relative(cwd, target.outDir)}`);
+    // Progress goes to stderr: this build runs inside `npm pack`'s prepack,
+    // whose stdout is the tarball name its caller captures. A progress line on
+    // stdout was captured instead of the filename and killed the release step
+    // with "Invalid format".
+    console.error(`[plugins] built ${String(result.transpiled)} TypeScript ${target.label} ${suffix} into ${relative(cwd, target.outDir)}`);
   }
 }
 
@@ -225,7 +229,7 @@ async function watchAndBuild() {
   process.on("SIGTERM", stop);
 
   await runBuild();
-  console.log(`[plugins] watching ${buildTargets.map((target) => relative(cwd, target.rootDir)).join(", ")}`);
+  console.error(`[plugins] watching ${buildTargets.map((target) => relative(cwd, target.rootDir)).join(", ")}`);
   await new Promise(() => undefined);
 }
 

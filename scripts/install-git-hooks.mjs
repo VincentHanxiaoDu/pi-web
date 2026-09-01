@@ -7,7 +7,10 @@ if (!existsSync('.git')) {
 
 try {
   execFileSync('git', ['config', 'core.hooksPath', '.githooks'], { stdio: 'inherit' });
-  console.log('Configured git hooks path: .githooks');
+  // stderr, not stdout: npm runs `prepare` inside `npm pack`, whose stdout is
+  // the tarball name its caller captures. A status line there is read as the
+  // filename and fails the release step.
+  console.error('Configured git hooks path: .githooks');
 } catch (error) {
   console.warn('Could not configure git hooks path. Run: git config core.hooksPath .githooks');
   process.exitCode = 0;
