@@ -87,3 +87,38 @@ describe("ChatView activity output viewer", () => {
     expect(hasRenderedModal(document)).toBe(false);
   });
 });
+
+describe("activity output command context", () => {
+  // Caught live: a background rsync ran for 11 minutes and its dialog showed
+  // only the task name and "Nothing has been written to this log yet." — the
+  // command that IS running was nowhere on screen. The viewer carries it.
+  it("renders the task command above the log when provided", async () => {
+    const view = await mountView();
+
+    view.activityOutput = activityOutputView("Background task copy (b99)", "", { command: "rsync -az --stats --partial src dest" });
+    await view.updateComplete;
+
+    const opened = dialog(view);
+    const command = opened.querySelector<HTMLElement>(".activity-output-command");
+    expect(command?.textContent).toContain("rsync -az --stats --partial");
+  });
+
+  it("explains a running task's silent log instead of implying it stalled", async () => {
+    const view = await mountView();
+
+    view.activityOutput = activityOutputView("Background task copy (b99)", "", { command: "rsync -az src dest", running: true });
+    await view.updateComplete;
+
+    const opened = dialog(view);
+    expect(opened.querySelector(".activity-output-empty")?.textContent).toContain("still running");
+  });
+
+  it("omits the command row when the caller has none", async () => {
+    const view = await mountView();
+
+    view.activityOutput = activityOutputView("Subagent worker (7c81b29c)", "# report");
+    await view.updateComplete;
+
+    expect(dialog(view).querySelector(".activity-output-command")).toBeNull();
+  });
+});

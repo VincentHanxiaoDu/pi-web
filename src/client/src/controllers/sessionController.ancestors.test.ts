@@ -83,4 +83,34 @@ describe("choosing a session from another workspace", () => {
 
     expect(read().sessions.every((entry) => entry.cwd === "/elsewhere" || entry.cwd === "")).toBe(true);
   });
+
+  /**
+   * The quick switcher lists sessions from every project, so a pick can move
+   * the reader to another project. Ancestry must resolve against the full
+   * catalogue: the selected project's workspaces alone cannot name another
+   * project's workspace, and a failed resolution left the old workspace,
+   * project, goal panel and URL describing somewhere else — the reported
+   * "goal crossed projects after a quick switch" and "refresh loses the
+   * session I just picked".
+   */
+  it("resolves a cross-project pick through the full workspace catalog", async () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedProject: here, workspaces: [workspace], projects: [here, there] };
+    const read = () => state;
+    const run = new SessionController(
+      () => state,
+      (next) => { state = { ...state, ...next }; },
+      () => undefined,
+      undefined,
+      {
+        api: api(),
+        socket: new EmitSocket(),
+        workspaceCatalog: () => [workspace, elsewhere],
+      },
+    );
+
+    await run.selectSession(sessionOverThere, { updateUrl: false });
+
+    expect(read().selectedWorkspace?.id).toBe("workspace-2");
+    expect(read().selectedProject?.id).toBe("project-2");
+  });
 });

@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile, mkdir, symlink } from "node:fs/promis
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ActiveAgentProfileAccessError } from "./activeAgentProfileProvider.js";
+import { ActiveAgentProfileAccessError } from "../shared/activeAgentProfileProvider.js";
 import { computePiWebPluginPackageRevision } from "../shared/piWebPluginCatalog.js";
 import { PiWebPluginCatalog, PiWebPluginService, type PiPackageProvider } from "./piWebPluginService.js";
 import { createWorkspaceProviderRuntimeSnapshot, WorkspaceCatalogProtocolError, type WorkspaceProviderRuntimeReader } from "../shared/workspaces/workspaceCatalog.js";

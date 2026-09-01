@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { PiPackageScope } from "../../shared/apiTypes.js";
-import { ActiveAgentProfileAccessError } from "./activeAgentProfileProvider.js";
-import type { PiPackageService } from "./piPackageService.js";
+import { ActiveAgentProfileAccessError } from "../shared/activeAgentProfileProvider.js";
+import type { PiPackageService } from "../shared/piPackageService.js";
 
 class PiPackageRequestValidationError extends Error {}
 

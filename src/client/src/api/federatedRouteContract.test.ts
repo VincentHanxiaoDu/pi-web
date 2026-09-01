@@ -117,11 +117,12 @@ describe("federated route contract", () => {
     expect(FEDERATED_WEBSOCKET_ROUTES.some((path) => path.includes("trust"))).toBe(false);
   });
 
-  it("allowlists the model catalog read and per-model enable edit without a new WebSocket", () => {
+  it("allowlists model catalog reads and scope edits without a new WebSocket", () => {
     expect(FEDERATED_HTTP_ROUTES.filter((route) => route.path.includes("/models"))).toEqual([
       { method: "GET", path: "/sessions/:sessionId/models" },
       { method: "GET", path: "/sessions/:sessionId/models/catalog" },
       { method: "POST", path: "/sessions/:sessionId/models/enabled" },
+      { method: "POST", path: "/sessions/:sessionId/models/scope" },
     ]);
     expect(FEDERATED_WEBSOCKET_ROUTES.some((path) => path.includes("models"))).toBe(false);
   });
@@ -177,6 +178,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(sessionsApi.models(session, machineId)),
       ignoreParseFailure(sessionsApi.modelCatalog(session, machineId)),
       ignoreParseFailure(sessionsApi.setModelEnabled(session, "openai", "gpt", true, machineId)),
+      ignoreParseFailure(sessionsApi.setModelScope(session, "current", machineId)),
       ignoreParseFailure(sessionsApi.setModel(session, "openai", "gpt", machineId)),
       ignoreParseFailure(sessionsApi.cycleModel(session, "forward", machineId)),
       ignoreParseFailure(sessionsApi.thinkingLevels(session, machineId)),

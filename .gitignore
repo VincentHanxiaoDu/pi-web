@@ -25,3 +25,13 @@ dist/
 # Local agent runtime artifacts (background task logs, delegate sessions)
 .pi/tasks/
 .pi/delegate/
+
+# Pi agent goal ledger state (local runtime, not project content)
+.pi/goals/
+.pi/queued-prompt-frames.json
+.pi/.goals-pool-snapshot.json
+.pi/HANDOFF.md
+.pi/TRACK.md
+
+# Playwright MCP session debris
+.playwright-mcp/

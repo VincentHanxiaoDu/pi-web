@@ -4,15 +4,17 @@ import type { ComposerEditorHandle } from "./composerEditorSetup";
 type ComposerEditorModule = typeof import("./composerEditorSetup");
 import { css, LitElement, html, type PropertyValues } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
+import { api, DEFAULT_WORKSPACE_ATTACHMENTS_FOLDER, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
-import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, type CapturedAttachment } from "../promptAttachmentCapture";
+import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, promptAttachmentsCanUseInlineDelivery } from "../promptAttachmentCapture";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
 import { detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { clearPendingPrompts, isNetworkFailure, loadPendingPrompts, NetworkSendError, savePendingPrompt, type PendingPrompt } from "../pendingOutbox";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
+import { clearStagedAttachments, loadStagedAttachments, saveStagedAttachments, type PendingAttachment } from "../promptAttachmentStaging";
+import { loadAttachmentDelivery, saveAttachmentDelivery } from "../attachmentPreferences";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { createBrowserVoiceRecorder } from "../browserVoiceRecorder";
 import { isDictationConfigured } from "../speechToText";
@@ -203,8 +205,6 @@ export const promptEditorStyles = css`
     .list-body.tiles .action-main { min-height: 48px; padding: var(--pi-space-4) 28px var(--pi-space-4) var(--pi-space-4); }
   }`;
 
-type PendingAttachment = CapturedAttachment & { id: string };
-
 @customElement("prompt-editor")
 export class PromptEditor extends LitElement {
   @property({ type: Boolean }) disabled = false;
@@ -213,6 +213,12 @@ export class PromptEditor extends LitElement {
   @property() machineId = "local";
   @property() projectId?: string;
   @property() workspaceId?: string;
+  /**
+   * Workspace-effective folder for the "save to folder" attachment delivery.
+   * Shown in the delivery label and sent explicitly with the save request, so
+   * the save destination is always the folder the label advertised.
+   */
+  @property() attachmentsFolder = DEFAULT_WORKSPACE_ATTACHMENTS_FOLDER;
   @property({ type: Boolean }) canSteer = false;
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Boolean }) canStop = false;
@@ -230,7 +236,7 @@ export class PromptEditor extends LitElement {
    * Send handler. Resolving `false` means the message was not accepted, and the
    * composer puts its contents back rather than losing them.
    */
-  @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery, replay?: { clientMessageId?: string }) => Promise<boolean | undefined> | boolean | undefined;
+  @property({ attribute: false }) onSend?: (text: string, streamingBehavior?: "steer" | "followUp", attachments?: PromptAttachment[], delivery?: PromptAttachmentDelivery, replay?: { clientMessageId?: string }, folder?: string) => Promise<boolean | undefined> | boolean | undefined;
   @property({ attribute: false }) onStop?: () => void;
   @property({ attribute: false }) onSelectModel?: () => void;
   @property({ attribute: false }) onSelectThinking?: () => void;
@@ -262,7 +268,8 @@ export class PromptEditor extends LitElement {
   @state() private voiceState: VoiceCaptureState = { kind: "idle" };
   @state() private zoomedAttachment?: { src: string; alt: string } | undefined;
   private voice?: VoiceController;
-  @state() private attachments: PendingAttachment[] = [];
+  @state() private attachments: readonly PendingAttachment[] = [];
+  @state() private attachmentDelivery: PromptAttachmentDelivery = loadAttachmentDelivery();
   @state() private attachmentError: string | undefined = undefined;
   /**
    * Files still being read into the composer. Attaching is asynchronous, and a
@@ -292,9 +299,14 @@ export class PromptEditor extends LitElement {
     const previousSessionId = sessionChanged ? changed.get("sessionId") : this.sessionId;
     const previousMachineId = machineChanged ? changed.get("machineId") : this.machineId;
     const previousKey = draftStorageKey(previousMachineId, previousSessionId);
-    if (previousKey !== undefined && savesOutgoingDraft({ hasRendered: hadRendered })) saveDraft(previousKey, this.draft);
+    if (previousKey !== undefined) {
+      if (savesOutgoingDraft({ hasRendered: hadRendered })) saveDraft(previousKey, this.draft);
+      saveStagedAttachments(previousKey, this.attachments);
+    }
     const currentKey = draftStorageKey(this.machineId, this.sessionId);
     this.draft = currentKey !== undefined ? loadDraft(currentKey) : "";
+    this.attachments = currentKey !== undefined ? loadStagedAttachments(currentKey) : [];
+    this.attachmentError = undefined;
     this.currentInputMode = inputModeForDraft(this.draft);
     this.completions = [];
     this.selectedIndex = 0;
@@ -489,6 +501,8 @@ export class PromptEditor extends LitElement {
 
   private renderAttachments() {
     if (this.attachments.length === 0 && this.attachmentError === undefined) return null;
+    const canUseInlineDelivery = promptAttachmentsCanUseInlineDelivery(this.attachments);
+    const delivery = this.effectiveAttachmentDelivery();
     return html`
       <div class="attachments" aria-label="Pending attachments">
         ${this.attachments.map((attachment) => html`
@@ -497,6 +511,14 @@ export class PromptEditor extends LitElement {
             <button type="button" class="attachment-remove" title="Remove attachment" aria-label=${`Remove ${attachment.name}`} @click=${() => { this.removeAttachment(attachment.id); }}>×</button>
           </div>
         `)}
+        ${this.attachments.length > 0 ? html`
+          <label class="attachment-delivery" title=${canUseInlineDelivery ? "How attachments are delivered to the agent" : "General files are saved and mentioned from the workspace"}>
+            <select .value=${delivery} @change=${(event: Event) => { this.changeDelivery(event); }}>
+              <option value="inline" ?disabled=${!canUseInlineDelivery}>Attach to message${canUseInlineDelivery ? "" : " (images only)"}</option>
+              <option value="folder">${attachmentFolderDeliveryLabel(this.attachmentsFolder)}</option>
+            </select>
+          </label>
+        ` : null}
         ${this.attachmentError !== undefined ? html`<div class="attachment-error">${this.attachmentError}</div>` : null}
       </div>
     `;
@@ -519,6 +541,17 @@ export class PromptEditor extends LitElement {
       <div class="attachment-file-preview" aria-hidden="true">${fileExtensionLabel(attachment.name)}</div>
       <span class="attachment-file-name">${attachment.name}</span>
     `;
+  }
+
+  private changeDelivery(event: Event) {
+    if (!(event.target instanceof HTMLSelectElement)) return;
+    const requested = event.target.value === "folder" ? "folder" : "inline";
+    if (requested === "inline" && !promptAttachmentsCanUseInlineDelivery(this.attachments)) {
+      event.target.value = "folder";
+      return;
+    }
+    this.attachmentDelivery = requested;
+    saveAttachmentDelivery(this.attachmentDelivery);
   }
 
   private removeAttachment(id: string) {
@@ -1045,9 +1078,13 @@ export class PromptEditor extends LitElement {
     // are kept so a rejected send can put them back. Losing a long prompt and
     // its images to a dropped connection is the kind of failure that makes
     // people distrust the app.
-    const restorable = { text: this.draft, attachments: pending };
+    const restorable = { text: this.draft, attachments: [...pending] };
+    // Folder delivery sends the displayed workspace-effective folder explicitly
+    // (the uploads pattern): the save lands exactly where the label pointed,
+    // independent of how the session cwd would resolve its own project config.
+    const folder = attachments !== undefined && delivery === "folder" ? this.attachmentsFolder : undefined;
     this.resetComposer();
-    void this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable);
+    void this.deliverAndRestoreOnFailure(text, behavior, attachments, delivery, restorable, folder);
   }
 
   /**
@@ -1063,11 +1100,12 @@ export class PromptEditor extends LitElement {
     attachments: PromptAttachment[] | undefined,
     delivery: PromptAttachmentDelivery,
     restorable: { text: string; attachments: PendingAttachment[] },
+    folder: string | undefined,
   ): Promise<void> {
     let accepted: boolean | undefined;
     let failure: unknown;
     try {
-      accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery);
+      accepted = await this.onSend?.(text, behavior, attachments, attachments === undefined ? undefined : delivery, undefined, folder);
     } catch (error) {
       accepted = false;
       failure = error;
@@ -1096,7 +1134,10 @@ export class PromptEditor extends LitElement {
     this.draft = "";
     this.currentInputMode = { kind: "normal" };
     const key = draftStorageKey(this.machineId, this.sessionId);
-    if (key !== undefined) clearDraft(key);
+    if (key !== undefined) {
+      clearDraft(key);
+      clearStagedAttachments(key);
+    }
     this.completions = [];
     this.attachments = [];
     this.attachmentError = undefined;
@@ -1155,6 +1196,10 @@ function pendingToPromptAttachment(attachment: PendingAttachment): PromptAttachm
     return { kind: "image", mimeType: attachment.mimeType, data: attachment.data, name: attachment.name };
   }
   return { kind: "file", mimeType: attachment.mimeType, data: attachment.data, name: attachment.name };
+}
+
+export function attachmentFolderDeliveryLabel(folder: string): string {
+  return `Save to ${folder}`;
 }
 
 function fileExtensionLabel(name: string): string {

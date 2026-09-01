@@ -72,6 +72,23 @@ describe("SessionController model catalog", () => {
     expect(state.error).toBe("");
   });
 
+  it("atomically sets the model scope preset on the selected machine", async () => {
+    const calls: { mode: "all" | "current"; machineId: string }[] = [];
+    let state: AppState = { ...initialAppState(), selectedMachine: machine("remote-a"), selectedWorkspace: workspace, selectedSession: oldSession, sessions: [oldSession] };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      setModelScope: (_session, mode, machineId) => {
+        calls.push({ mode, machineId: machineId ?? "local" });
+        return Promise.resolve({ models: catalogModels });
+      },
+    };
+    const controller = controllerWithApi(state, (patch) => { state = { ...state, ...patch }; }, api);
+
+    await expect(controller.setModelScope("current")).resolves.toEqual(catalogModels);
+
+    expect(calls).toEqual([{ mode: "current", machineId: "remote-a" }]);
+  });
+
   it("returns undefined for a failed toggle so the dialog can keep the row's state", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedSession: oldSession, sessions: [oldSession] };
     const api: typeof defaultApi = { ...defaultApi, setModelEnabled: () => Promise.reject(new Error("toggle failed")) };
@@ -83,17 +100,28 @@ describe("SessionController model catalog", () => {
     expect(state.error).toBe("toggle failed");
   });
 
+  it("reports scope preset failures through the application error state", async () => {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, selectedSession: oldSession, sessions: [oldSession] };
+    const api: typeof defaultApi = { ...defaultApi, setModelScope: () => Promise.reject(new Error("scope failed")) };
+    const controller = controllerWithApi(state, (patch) => { state = { ...state, ...patch }; }, api);
+
+    await expect(controller.setModelScope("all")).resolves.toBeUndefined();
+    expect(state.error).toBe("Error: scope failed");
+  });
+
   it("lists and toggles nothing without a selected session", async () => {
     let state: AppState = initialAppState();
     const api: typeof defaultApi = {
       ...defaultApi,
       modelCatalog: () => { throw new Error("must not be called"); },
       setModelEnabled: () => { throw new Error("must not be called"); },
+      setModelScope: () => { throw new Error("must not be called"); },
     };
     const controller = controllerWithApi(state, (patch) => { state = { ...state, ...patch }; }, api);
 
     expect(await controller.listModelCatalog()).toEqual([]);
     expect(await controller.setModelEnabled("openai", "gpt-4o", true)).toBeUndefined();
+    expect(await controller.setModelScope("current")).toBeUndefined();
     expect(state.error).toBe("");
   });
 });

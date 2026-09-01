@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActiveAgentProfileDescriptor, PiWebConfigResponse, PiWebPluginInfo } from "../../shared/apiTypes.js";
 import type { SessionDaemonAgentProfileResult } from "../shared/sessiondClient/sessionDaemonClient.js";
-import type { ActiveAgentProfileProvider } from "./activeAgentProfileProvider.js";
+import type { ActiveAgentProfileProvider } from "../shared/activeAgentProfileProvider.js";
 import { buildApp } from "./app.js";
 import type { PiWebConfigService } from "./configRoutes.js";
 

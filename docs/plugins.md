@@ -22,6 +22,8 @@ Browser entries run in the PI WEB page through browser plugin API v2. Declared s
 
 **PI WEB plugins** are packages discovered from bundled, local, dev, and installed Pi-package sources. A plugin can declare a browser `module`, a sessiond `serverModule`, or both. A server entry can participate only in the documented PI WEB plugin lifecycle and workspace-provider contract; it cannot register Pi model providers or arbitrary hooks.
 
+Pi loads ordinary Pi resources from installed Pi packages and from its user and project resource locations. PI WEB plugin discovery loads only the browser and server entries declared in `piWeb.plugins`; enabling or disabling a PI WEB plugin does not add or remove the package's Pi extensions, skills, prompt templates, themes, or context/system prompt files.
+
 Use **Settings → Pi packages** to view configured Pi packages or install/remove/update a package. Enter only the package source, such as `npm:@scope/package`, a git/URL source, or a local path. PI WEB uses Pi's default package location, equivalent to `pi install <source>`, and does not ask for an install location.
 
 When machine federation is enabled, **Settings → Pi packages** targets the currently selected machine. The panel labels whether changes will run on the local/gateway machine or on a selected remote PI WEB machine.
@@ -384,7 +386,7 @@ Review task configs before running them, especially in shared projects. Workspac
 ### Relays
 
 **Plugin id:** `relays`
-**What it does:** adds a read-only **Relays** workspace tab for browsing the workspace's relays, plus an **Open Workspace Relays** action for the selected workspace that opens the same tab.
+**What it does:** the `@jmfederico/pi-relay` Pi package supplies the generic Relay workflow through the `/relay` and `/relay-worktree` prompt templates and the `relay` skill. Its browser-only `relays` PI WEB plugin adds a read-only **Relays** workspace tab for browsing the workspace's relays, plus an **Open Workspace Relays** action for the selected workspace that opens the same tab.
 
 A relay is a directory of markdown notes under `.pi-web/relays/<name>/` in the workspace root — the convention used by the Relay method for chaining agent sessions. The tab lists each relay's documents with `status.md`, `charter.md`, and `log.md` first (in that order), followed by any other files alphabetically, and opens `status.md` by default. Markdown documents render as sanitized HTML; other files render as preformatted text, and binary files have no preview. Truncated documents show a notice, and **Refresh** re-scans the workspace and reloads the open document.
 
@@ -392,15 +394,11 @@ Documents in subfolders are listed too. Folders appear as chips in the document 
 
 With several relays, a picker pre-selects the most recently modified one; a single relay opens directly. A workspace without `.pi-web/relays/` shows an empty state explaining the convention. The tab never creates, edits, or deletes relay files.
 
-Relays is enabled by default. To hide it, disable `relays` in **Settings → PI WEB plugins** or set:
+Relay ships as a standalone Pi package: its source lives at `pi-packages/relays/` and its built copy ships inside `@jmfederico/pi-web` at `dist/pi-packages/relays/`, alongside (but outside) the bundled plugins in `pi-web-plugins/`/`dist/pi-web-plugins/`. PI WEB does not discover it from those plugin directories. Installing `@jmfederico/pi-relay` for the active Pi agent profile lets Pi load its two prompt templates and skill and lets PI WEB discover its browser plugin, just as it would for any other installed Pi package (see [Discovery and packaging](#discovery-and-packaging) and [Pi packages shipped alongside bundled plugins](#pi-packages-shipped-alongside-bundled-plugins)). After installing or removing the package, use `/reload` in each idle session to refresh Pi's resources and reload the browser page to refresh the plugin catalog.
 
-```json
-{
-  "plugins": {
-    "relays": { "enabled": false }
-  }
-}
-```
+Once the package is installed, `plugins.relays.enabled` controls only the Relays browser panel and action. Disabling it and reloading the page hides those PI WEB contributions without removing `/relay`, `/relay-worktree`, or the `relay` skill; re-enabling it restores the browser contributions without changing Pi's resources. Because the plugin is browser-only, changing this setting does not require a session-daemon restart.
+
+PI WEB keeps the default setup zero-extra-steps: sessiond installs `@jmfederico/pi-relay` automatically for the active agent profile at startup if it is not already configured for that profile. Removing it from **Settings → Pi packages** removes the Pi resources and browser plugin and is remembered per profile (see [Pi packages shipped alongside bundled plugins](#pi-packages-shipped-alongside-bundled-plugins)), so a manual removal is not silently reinstalled later. A user who changes their mind can reinstall it again with one click from the same Settings screen, with no path to type.
 
 ## Discovery and packaging
 
@@ -512,6 +510,18 @@ const iconUrl = new URL("./assets/icon.svg", import.meta.url);
 The final installed plugin package must contain `assets/icon.svg` at that path relative to the final built module and inside `browserRoot`. PI WEB serves files that already exist in the package; it does not copy a source `public/` directory or apply Vite-style public-directory semantics. Configure the plugin build and package contents to emit or copy the asset into its final module-relative location.
 
 PI WEB returns executable JavaScript MIME types for both `.js` and `.mjs`. JSON, CSS, HTML, and SVG receive their corresponding content types; unknown file types are served as octet-stream.
+
+## Pi packages shipped alongside bundled plugins
+
+`pi-packages/` ships real, independently identified Pi packages inside `@jmfederico/pi-web`'s npm package, built into `dist/pi-packages/<name>/` alongside — but separate from — the bundled PI WEB plugins in `pi-web-plugins/`/`dist/pi-web-plugins/`. A package shipped this way is *not* discovered by PI WEB's bundled/local directory scan; it only becomes an active PI WEB plugin once it is installed as a Pi package for the active agent profile, exactly like an externally published one (see [Discovery and packaging](#discovery-and-packaging)).
+
+`pi-packages/relays/` is shaped this way: its `package.json` carries the real package identity `@jmfederico/pi-relay` alongside its `piWeb.plugins` entry, and its `prompts/` and `skills/` directories already follow pi's package conventions. Installing it as a Pi package — with a plain `pi install <path-to-dist/pi-packages/relays>`, through **Settings → Pi packages**' existing free-text install form, or with the one-click **Available packages** install button described below — makes `/relay`, `/relay-worktree`, and the `relay` skill available in any `pi` session, and makes the Relays PI WEB plugin (its browser tab and workspace action) available once installed for the active agent profile. Publishing the package to npm remains deferred follow-up work; today, installing it uses its local shipped path.
+
+**Automatic install, with opt-out.** For a plain `pi` user this package is only ever installed by explicit `pi install`. For PI WEB, though, the session daemon reconciles a small registry of known auto-installable Pi packages (currently just `@jmfederico/pi-relay`) at startup, for the active agent profile: if a package matching one of these by its own declared `package.json` name is not already configured for that profile, sessiond installs it from its shipped local path automatically, the same way the Settings UI's Install action would. This reconciliation is best-effort — a failure (offline, a read-only agent directory, a package-manager error) is logged and never blocks or crashes session-daemon startup.
+
+**Dismissal is remembered per profile.** Removing a known auto-installable package from **Settings → Pi packages** records that removal in a small store under `$PI_WEB_DATA_DIR` (state, not user-editable configuration — alongside `projects.json`/`machines.json`, not in `$PI_WEB_CONFIG`), keyed by the active agent profile directory and the package's declared name. Once dismissed for a profile, startup reconciliation does not reinstall it again for that profile; only an explicit reinstall brings it back.
+
+**One-click reinstall.** A profile that dismissed (or never installed) a known auto-installable package can install it again from **Settings → Pi packages** without typing its on-disk path: an **Available packages** section lists every known package not currently configured for the selected target, each with an **Install** button that installs it from its shipped location directly. The section disappears once every known package is configured.
 
 ## Browser module shape and v2 migration
 

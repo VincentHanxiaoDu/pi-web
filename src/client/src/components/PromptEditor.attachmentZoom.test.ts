@@ -14,8 +14,12 @@ async function mountWithImage(): Promise<PromptEditor> {
   const editor = new PromptEditor();
   editor.sessionId = "s";
   editor.machineId = "local";
-  Reflect.set(editor, "attachments", [{ id: "a1", ...imageAttachment() }]);
   document.body.append(editor);
+  await editor.updateComplete;
+  // Inject after the first render: the session-scope load in willUpdate has
+  // already run by then, so the staged attachment is not overwritten with the
+  // (empty) storage for this fresh session.
+  Reflect.set(editor, "attachments", [{ id: "a1", ...imageAttachment() }]);
   await editor.updateComplete;
   return editor;
 }

@@ -12,7 +12,7 @@ import type { MachineClient } from "./machines/machineClient.js";
 import { MachineService } from "./machines/machineService.js";
 import { MachineStore } from "./machines/machineStore.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
-import type { PiPackageService } from "./piPackageService.js";
+import type { PiPackageService } from "../shared/piPackageService.js";
 import type { SessionProxyDaemon } from "./sessionProxyRoutes.js";
 import type { ActiveAgentProfileDescriptor, PiPackageInfo, PiWebConfigResponse, PiWebConfigValues, WorkspaceListing, WorkspaceProviderAuthorityResolution } from "../../shared/apiTypes.js";
 import type { SessionDaemonAgentProfileResult } from "../shared/sessiondClient/sessionDaemonClient.js";

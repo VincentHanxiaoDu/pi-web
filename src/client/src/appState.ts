@@ -13,10 +13,15 @@ export interface ActivityOutputView {
   readonly title: string;
   readonly text: string;
   readonly empty: boolean;
+  /** The command a background task is running, shown as standing context. */
+  readonly command?: string;
+  /** True while the task is still running — a silent log then means the
+   * command buffers its output, not that the task stalled. */
+  readonly running?: boolean;
 }
 
-export function activityOutputView(title: string, text: string): ActivityOutputView {
-  return { title, text, empty: text.trim() === "" };
+export function activityOutputView(title: string, text: string, context: { command?: string; running?: boolean } = {}): ActivityOutputView {
+  return { title, text, empty: text.trim() === "", ...(context.command === undefined ? {} : { command: context.command }), ...(context.running === undefined ? {} : { running: context.running }) };
 }
 
 /**
@@ -174,7 +179,7 @@ export interface AppState {
   workspaceDeletionRuns: Record<string, TerminalCommandRun>;
   commandDialog: Extract<CommandResult, { type: "select" }> | undefined;
   treeDialog: SessionTreeSnapshot | undefined;
-  modelDialog: { title: string; options: CommandOption[]; catalog: SessionModelCatalogEntry[]; selectedValue?: string } | undefined;
+  modelDialog: { instanceId: number; origin: ModelDialogOrigin; title: string; options: CommandOption[]; catalog: SessionModelCatalogEntry[]; selectedValue?: string } | undefined;
   thinkingDialog: { title: string; options: CommandOption[]; selectedValue?: string } | undefined;
   themeDialog: { title: string; options: CommandOption[]; selectedValue?: string } | undefined;
   authDialog: AuthDialogState | undefined;
@@ -200,6 +205,12 @@ export interface AppState {
 }
 
 /** A closed extension dialog paired with the record the browser rendered while it was open. */
+export interface ModelDialogOrigin {
+  machineId: string;
+  sessionId: string;
+  cwd: string;
+}
+
 export interface ClosedExtensionDialog {
   dialog: PendingExtensionDialog;
   reason: ExtensionDialogCloseReason;
@@ -274,6 +285,22 @@ export function workspaceSelectionKey(state: Pick<AppState, "selectedMachine" | 
 }
 
 /**
+ * Whether the selected session's own directory belongs to the selected
+ * workspace: the workspace itself or a subdirectory of it. A session whose
+ * cwd escaped the workspace (a quick-switcher pick whose ancestry has not
+ * landed yet) must not borrow the workspace's goal panel.
+ */
+export function sessionCwdBelongsToSelectedWorkspace(state: Pick<AppState, "selectedSession" | "selectedWorkspace">): boolean {
+  const session = state.selectedSession;
+  const workspace = state.selectedWorkspace;
+  if (session === undefined || workspace === undefined) return true;
+  const cwd = session.cwd;
+  if (cwd === "") return true;
+  if (cwd === workspace.path) return true;
+  return cwd.startsWith(workspace.path.endsWith("/") ? workspace.path : `${workspace.path}/`);
+}
+
+/**
  * The goals load for the current selection. The retained slot is handed
  * through only when it was fetched for exactly this machine+project+workspace;
  * on any other selection it would be another project's goal with live Resume
@@ -283,10 +310,10 @@ export function workspaceSelectionKey(state: Pick<AppState, "selectedMachine" | 
 export function goalsForSelectedWorkspace(state: AppState): PanelLoad<GoalRecordSummary[]> {
   const key = workspaceSelectionKey(state);
   const slot = state.workspaceGoalsLoad;
+  if (!sessionCwdBelongsToSelectedWorkspace(state)) return { state: "unloaded", key, data: [] };
   if (slot.key !== undefined && slot.key === key) return slot;
   return { state: "unloaded", key, data: [] };
 }
-
 /**
  * Whether acting on the rendered goals (Resume, Abandon) is allowed: only
  * when the goals state answers for the current selection. Defense in depth

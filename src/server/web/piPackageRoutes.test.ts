@@ -1,8 +1,8 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiPackageInfo } from "../../shared/apiTypes.js";
-import { ActiveAgentProfileAccessError } from "./activeAgentProfileProvider.js";
-import type { PiPackageService } from "./piPackageService.js";
+import { ActiveAgentProfileAccessError } from "../shared/activeAgentProfileProvider.js";
+import type { PiPackageService } from "../shared/piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 
 let app: FastifyInstance;

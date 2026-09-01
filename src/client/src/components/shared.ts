@@ -2,6 +2,9 @@ import { css } from "lit";
 import type { ChatRole } from "../chatRole";
 import type { AskUserOutcome } from "../../../shared/apiTypes";
 
+/** Directional navigation shadow that avoids a halo above the fixed heading edge. */
+export const scrollBoundaryShadow = css`0 8px 18px -8px var(--pi-shadow-soft)`;
+
 export interface ToolPreview {
   diff?: string;
   firstChangedLine?: number;
@@ -241,6 +244,7 @@ export const listStyles = css`
     h2 > span:only-child { display: none; }
     h2:has(> span:only-child) { margin: 0; }
   }
+  section > h2 { position: relative; z-index: 3; margin: 0 -10px; padding: 0 10px 8px; background: var(--pi-bg); box-shadow: ${scrollBoundaryShadow}; }
   .list-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
   /* Tile/card layout for management lists (workspaces, projects, machines).
      Rows become compact cards in an auto-fill grid; the row menu moves into

@@ -151,6 +151,21 @@
                 separate Pi package-manager task.
               </p>
               <p>
+                Pi loads ordinary Pi resources from installed Pi packages and from its user and project resource
+                locations. PI WEB plugin discovery loads only the declared browser and server entries; enabling or
+                disabling a plugin does not add or remove the package's Pi extensions, skills, prompt templates,
+                themes, or context/system prompt files.
+              </p>
+              <p>
+                Relay follows this split: installing or removing <code>@jmfederico/pi-relay</code> controls the
+                <code>/relay</code> and <code>/relay-worktree</code> prompt templates and the <code>relay</code> skill,
+                while <code>plugins.relays.enabled</code> controls only the read-only Relays browser panel and its
+                workspace action. Disabling the browser plugin leaves the Pi resources available. At session-daemon
+                startup, PI WEB installs the package automatically for the active agent profile by default; removing it in
+                <strong>Settings → Pi packages</strong> is remembered for that profile, and
+                <strong>Available packages</strong> offers one-click reinstall.
+              </p>
+              <p>
                 Use <strong>Settings → Pi packages</strong> to view configured Pi packages or install/remove/update a
                 package. Enter only the package source, such as <code>npm:@scope/package</code>, a git/URL source, or a
                 local path. PI WEB uses Pi's default package location, equivalent to <code>pi install &lt;source&gt;</code>,

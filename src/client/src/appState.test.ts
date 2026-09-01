@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GoalRecordSummary, Workspace } from "./api";
 import { canActOnWorkspaceGoals, goalsForSelectedWorkspace, initialAppState, type AppState, type PanelLoad } from "./appState";
+import { oldSession } from "./controllers/sessionController.testSupport";
 import { machineWorkspaceKey } from "./machineKeys";
 
 const workspace: Workspace = { id: "ws-1", projectId: "p1", path: "/repo", label: "repo", isMain: true, effectiveConfig: {} };
@@ -57,5 +58,29 @@ describe("the goals load slot", () => {
   it("starts unloaded", () => {
     const state = { ...initialAppState(), selectedWorkspace: workspace };
     expect(goalsForSelectedWorkspace(state).state).toBe("unloaded");
+  });
+
+  /**
+   * A quick-switcher pick whose ancestry has not landed can leave a session
+   * from another directory in front of this workspace. Its goal panel would
+   * then borrow this workspace's records — the reported cross-project goal —
+   * so an escaped cwd reads as unloaded, never as this workspace's goals.
+   */
+  it("reads a session from outside the workspace as unloaded, not as this workspace's goals", () => {
+    const key = machineWorkspaceKey("local", workspace.projectId, workspace.id);
+    const elsewhereSession = { ...oldSession, id: "far", cwd: "/elsewhere/deep" };
+    const state = { ...stateWith({ state: "loaded", key, data: rows }), selectedSession: elsewhereSession };
+    const load = goalsForSelectedWorkspace(state);
+    expect(load.state).toBe("unloaded");
+    expect(load.data).toEqual([]);
+  });
+
+  it("keeps the panel for a session recorded in a subdirectory of the workspace", () => {
+    const key = machineWorkspaceKey("local", workspace.projectId, workspace.id);
+    const subdirSession = { ...oldSession, id: "sub", cwd: "/repo/sub/deeper" };
+    const state = { ...stateWith({ state: "loaded", key, data: rows }), selectedSession: subdirSession };
+    const load = goalsForSelectedWorkspace(state);
+    expect(load.state).toBe("loaded");
+    expect(load.data).toEqual(rows);
   });
 });

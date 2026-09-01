@@ -308,11 +308,19 @@ function describeServiceShell(): string {
  * one was chosen, plus the deployment variables only the installing
  * environment knows. A service manager does not inherit the installing
  * shell's environment, so anything left out here is lost at service start.
+ *
+ * The libuv threadpool is widened deliberately: its four default workers are
+ * shared by every async fs call and DNS lookup, and one blocked directory
+ * open per worker starves the whole process into an app-level hang while the
+ * event loop idles. Sixteen workers make a single stalled op a slowdown
+ * instead of an outage. (The event-loop watchdog is the second half of that
+ * answer: it turns a total stall into a launchd restart.)
  */
 function serviceEnvironment(options: InstallOptions, configPath: string): Record<string, string> {
   return {
     ...deploymentServiceEnvironment(process.env),
     ...(options.config === undefined ? {} : { PI_WEB_CONFIG: configPath }),
+    UV_THREADPOOL_SIZE: "16",
   };
 }
 

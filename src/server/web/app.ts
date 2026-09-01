@@ -10,7 +10,7 @@ import { ProjectService } from "../shared/projects/projectService.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import { SessionDaemonWorkspaceCatalog } from "./workspaces/sessionDaemonWorkspaceCatalog.js";
 import { sendWorkspaceRequestError } from "./workspaces/workspaceRouteErrors.js";
-import { loadEffectiveProjectUploadsConfig } from "./workspaces/projectPiWebConfig.js";
+import { loadEffectiveProjectAttachmentsConfig, loadEffectiveProjectUploadsConfig } from "../shared/workspaces/projectPiWebConfig.js";
 import { listDirectorySuggestions } from "../shared/projects/directorySuggestions.js";
 import { SessionDaemonClient } from "../shared/sessiondClient/sessionDaemonClient.js";
 import { loadServerPluginRecoveryConfig } from "../../serverPluginRecovery.js";
@@ -22,7 +22,7 @@ import { registerWorkspaceDeletionRoutes } from "./workspaces/workspaceDeletionR
 import { registerSpeechRoutes } from "./speechRoutes.js";
 import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, type PiWebConfigService } from "./configRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
-import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
+import { createActiveProfilePiPackageService, type PiPackageService } from "../shared/piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
 import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus } from "../shared/piWebStatus.js";
@@ -31,7 +31,7 @@ import {
   requireActiveAgentProfile,
   SessionDaemonActiveAgentProfileProvider,
   type ActiveAgentProfileProvider,
-} from "./activeAgentProfileProvider.js";
+} from "../shared/activeAgentProfileProvider.js";
 import { MachineService } from "./machines/machineService.js";
 import { registerMachineRoutes } from "./machines/machineRoutes.js";
 import { registerFleetRoutes } from "./updates/fleetRoutes.js";
@@ -125,7 +125,10 @@ async function resolveWorkspacesWithEffectiveConfig(
 
 async function workspaceEffectiveConfig(projectPath: string, config?: Pick<PiWebConfigService, "read">): Promise<WorkspaceEffectiveConfig> {
   const globalConfig = config === undefined ? {} : (await config.read()).effectiveConfig;
-  return { uploads: await loadEffectiveProjectUploadsConfig(projectPath, globalConfig) };
+  return {
+    uploads: await loadEffectiveProjectUploadsConfig(projectPath, globalConfig),
+    attachments: await loadEffectiveProjectAttachmentsConfig(projectPath, globalConfig),
+  };
 }
 
 async function readEffectiveConfig(config: Pick<PiWebConfigService, "read">) {

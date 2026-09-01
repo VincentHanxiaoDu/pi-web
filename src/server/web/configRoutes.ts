@@ -1,17 +1,16 @@
 import type { FastifyInstance } from "fastify";
-import { loadPiWebConfig, parseAgentConfig, parseUploadsConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
+import { parseAgentConfig, parseAttachmentsConfig, parseUploadsConfig, type AgentPathHost, type PiWebConfig } from "../../config.js";
+import { createFilePiWebConfigService, currentPiWebConfigResponse, type PiWebConfigService } from "../shared/piWebConfigService.js";
 import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
 import { isPiWebPluginId } from "../../shared/pluginIds.js";
 
-export interface PiWebConfigService {
-  read: () => PiWebConfigResponse | Promise<PiWebConfigResponse>;
-  write: (config: PiWebConfigValues) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
-}
+export { createFilePiWebConfigService, currentPiWebConfigResponse, type PiWebConfigService };
 
 export const SELECTED_MACHINE_CONFIG_KEYS = [
   "plugins",
   "pathAccess",
   "uploads",
+  "attachments",
   "maxUploadBytes",
   "spawnSessions",
   "subsessions",
@@ -20,29 +19,6 @@ export const SELECTED_MACHINE_CONFIG_KEYS = [
 ] as const satisfies readonly (keyof PiWebConfigValues)[];
 
 const SELECTED_MACHINE_CONFIG_KEY_SET = new Set<string>(SELECTED_MACHINE_CONFIG_KEYS);
-
-export function createFilePiWebConfigService(options: LoadOptions = {}): PiWebConfigService {
-  return {
-    read: () => currentPiWebConfigResponse(options),
-    write: (config) => {
-      savePiWebConfig(config, options);
-      return currentPiWebConfigResponse(options);
-    },
-  };
-}
-
-export function currentPiWebConfigResponse(options: LoadOptions = {}): PiWebConfigResponse {
-  const loaded = loadPiWebConfig(options);
-  const effective = resolveEffectivePiWebConfig(loaded, options);
-  const env = options.env ?? process.env;
-  return {
-    path: loaded.path,
-    exists: loaded.exists,
-    config: loaded.config,
-    effectiveConfig: effective.config,
-    envOverrides: piWebConfigEnvOverrides(env),
-  };
-}
 
 export function registerConfigRoutes(app: FastifyInstance, service: PiWebConfigService = createFilePiWebConfigService()): void {
   app.get("/api/config", async (_request, reply) => {
@@ -129,6 +105,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   const plugins = value["plugins"];
   const pathAccess = value["pathAccess"];
   const uploads = value["uploads"];
+  const attachments = value["attachments"];
   const maxUploadBytes = value["maxUploadBytes"];
   const spawnSessions = value["spawnSessions"];
   const subsessions = value["subsessions"];
@@ -147,6 +124,7 @@ function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "curr
   if (plugins !== undefined) config.plugins = parsePluginsRequest(plugins);
   if (pathAccess !== undefined) config.pathAccess = parsePathAccessRequest(pathAccess);
   if (uploads !== undefined) config.uploads = parseUploadsConfig(uploads, "request");
+  if (attachments !== undefined) config.attachments = parseAttachmentsConfig(attachments, "request");
   if (maxUploadBytes !== undefined) config.maxUploadBytes = parseMaxUploadBytesRequest(maxUploadBytes);
   if (spawnSessions !== undefined) {
     if (typeof spawnSessions !== "boolean") throw new Error("PI WEB config spawnSessions must be a boolean");
@@ -169,6 +147,7 @@ function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
     ...(config.plugins !== undefined ? { plugins: config.plugins } : {}),
     ...(config.pathAccess !== undefined ? { pathAccess: config.pathAccess } : {}),
     ...(config.uploads !== undefined ? { uploads: config.uploads } : {}),
+    ...(config.attachments !== undefined ? { attachments: config.attachments } : {}),
     ...(config.maxUploadBytes !== undefined ? { maxUploadBytes: config.maxUploadBytes } : {}),
     ...(config.spawnSessions !== undefined ? { spawnSessions: config.spawnSessions } : {}),
     ...(config.subsessions !== undefined ? { subsessions: config.subsessions } : {}),
@@ -267,21 +246,6 @@ function requireResponseBoolean(record: Record<string, unknown>, key: string, so
   const value = record[key];
   if (typeof value !== "boolean") throw new Error(`${source} field must be a boolean: ${key}`);
   return value;
-}
-
-function piWebConfigEnvOverrides(env: NodeJS.ProcessEnv): PiWebConfigEnvOverrides {
-  return {
-    host: isEnvSet(env["PI_WEB_HOST"]),
-    port: isEnvSet(env["PI_WEB_PORT"]) || isEnvSet(env["PORT"]),
-    allowedHosts: isEnvSet(env["PI_WEB_ALLOWED_HOSTS"]),
-    spawnSessions: isEnvSet(env["PI_WEB_SPAWN_SESSIONS"]),
-    subsessions: isEnvSet(env["PI_WEB_SUBSESSIONS"]),
-    askUser: isEnvSet(env["PI_WEB_ASK_USER"]),
-  };
-}
-
-function isEnvSet(value: string | undefined): boolean {
-  return value !== undefined && value !== "";
 }
 
 function isConfigValidationError(error: unknown): boolean {

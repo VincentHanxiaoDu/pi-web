@@ -33,9 +33,13 @@ import { registerTerminalRoutes } from "./daemon/terminals/terminalRoutes.js";
 import { getPiWebRuntimeComponent } from "./shared/piWebStatus.js";
 import { SESSIOND_RUNTIME_CAPABILITIES } from "../shared/capabilities.js";
 import { agentSessionDirEnvOverride, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled, PI_CODING_AGENT_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV } from "../config.js";
+import { createFilePiWebConfigService } from "./shared/piWebConfigService.js";
 import { createActiveAgentProfileDescriptor } from "./daemon/activeAgentProfile.js";
 import { loadServerPluginRecoveryConfig } from "../serverPluginRecovery.js";
-import { PiWebPluginCatalog } from "./shared/piWebPluginCatalog.js";
+import { DefaultPiPackageProvider, PiWebPluginCatalog } from "./shared/piWebPluginCatalog.js";
+import { createDefaultPiPackageService } from "./shared/piPackageService.js";
+import { PiPackageDismissalStore, piPackageDismissalStorePath } from "./shared/piPackageDismissalStore.js";
+import { reconcileAutoInstallablePiPackages } from "./daemon/autoInstallPiPackages.js";
 import { applyAgentHttpIdleTimeout } from "./daemon/agentHttpDispatcher.js";
 import { scrubNonAgentVisibleEnvKeys } from "./daemon/agentProcessEnvironment.js";
 import { claimSessiondStateOwnership } from "./daemon/sessiondStateOwnership.js";
@@ -54,6 +58,10 @@ import { WorkspaceRemovalService } from "./daemon/workspaces/workspaceRemovalSer
 const daemonEnvironment: NodeJS.ProcessEnv = Object.freeze({ ...process.env });
 const serverPluginRecovery = loadServerPluginRecoveryConfig({ env: daemonEnvironment });
 const { config, deprecatedAgentInputs } = effectivePiWebConfig({ env: daemonEnvironment });
+// The session service re-reads the config file at request time (e.g. for the
+// attachments default folder), so Settings edits apply without a daemon
+// restart; the daemon's own startup toggles keep using the snapshot above.
+const configService = createFilePiWebConfigService({ env: daemonEnvironment });
 const activeAgentProfile = createActiveAgentProfileDescriptor(config.agent);
 // Normalize the resolved agent state locations into the canonical pi SDK env
 // vars before anything agent-visible can spawn: the embedded SDK's own
@@ -156,6 +164,22 @@ async function createSessionDaemonRuntime() {
   } else {
     app.log.info({ httpIdleTimeoutMs: appliedHttpIdleTimeout.timeoutMs }, "applied agent profile HTTP idle timeout to the session daemon HTTP stack");
   }
+  // Best-effort, non-fatal reconciliation of Pi packages PI WEB ships "out of
+  // the box" (currently just the Relays plugin's @jmfederico/pi-relay
+  // package): installs one for the active agent profile, the same way the
+  // manual Settings UI Install action would, unless it is already configured
+  // or the profile dismissed it (removed it on purpose) before. Deliberately
+  // not awaited: reconciliation catches and logs its own failures internally,
+  // and a slow or failed install must never delay or block daemon startup.
+  void reconcileAutoInstallablePiPackages({
+    profileDir: activeAgentProfile.dir,
+    packageProvider: new DefaultPiPackageProvider(process.cwd(), activeAgentProfile.dir),
+    installer: createDefaultPiPackageService(process.cwd(), activeAgentProfile.dir),
+    dismissalChecker: new PiPackageDismissalStore(piPackageDismissalStorePath(daemonEnvironment)),
+    logger: app.log,
+  }).catch((error: unknown) => {
+    app.log.warn({ err: error }, "Pi package auto-install reconciliation failed unexpectedly; continuing without it");
+  });
   const serverPlugins = await createServerPluginRuntime({
     catalog: serverPluginCatalog,
     ...(serverPluginRecovery.safeStart === undefined ? {} : { safeStart: serverPluginRecovery.safeStart }),
@@ -238,6 +262,7 @@ async function createSessionDaemonRuntime() {
       ...(spawnTargets === undefined ? {} : { spawnTargets }),
       subsessionsEnabled: config.subsessions,
       askUserEnabled: config.askUser,
+      config: configService,
       hostContributions: {
         // Sessions always run nested in this daemon, so they always get the
         // session environment facts; Docker deployments add their container

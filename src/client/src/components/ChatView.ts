@@ -320,12 +320,13 @@ export const chatStyles = css`
      without moving a control the reader is aiming at. Tall questions scroll
      inside the slot rather than pushing the composer off the screen. */
   /* The geometry contract lives HERE, once. The slot owns the height budget
-     (60vh); every waiting card fills it as a flex column whose body is the
-     one scroller and whose action row never scrolls away. Cards opt in by
-     stretching to the slot — a new waiting card needs no cap of its own.
-     The flat version capped each card separately and missed one: the tall
-     ask-user card pushed its submit below the fold. */
-  .waiting-slot { flex: 0 0 auto; display: flex; flex-direction: column; max-height: 60vh; margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
+     (60vh, with a hard pixel ceiling for very tall displays where 60vh alone
+     would grow a question past one glance); every waiting card fills it as a
+     flex column whose body is the one scroller and whose action row never
+     scrolls away. Cards opt in by stretching to the slot — a new waiting card
+     needs no cap of its own. The flat version capped each card separately and
+     missed one: the tall ask-user card pushed its submit below the fold. */
+  .waiting-slot { flex: 0 0 auto; display: flex; flex-direction: column; max-height: min(60vh, 760px); margin: 0 var(--pi-chat-gutter) var(--pi-space-4); }
   .waiting-slot > * { flex: 0 1 auto; min-height: 0; max-height: 100%; }
   .activity-dock { flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) 10px; z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-pill); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: 0 8px 28px var(--pi-shadow); backdrop-filter: blur(6px); }
   /* Idle is the state nobody needs a full-width banner for: keep the signal,
@@ -421,6 +422,7 @@ export const chatStyles = css`
   .activity-output-close:focus-visible { outline: 1px solid var(--pi-border); outline-offset: -2px; }
   .activity-output-body { flex: 1; min-height: 0; margin: 0; padding: var(--pi-space-4) var(--pi-space-5); font: var(--pi-code-font-size, 12px)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; overscroll-behavior: contain; }
   .activity-output-empty { margin: 0; padding: var(--pi-space-6) var(--pi-space-5); color: var(--pi-muted); text-align: center; }
+  .activity-output-command { display: block; padding: var(--pi-space-3) var(--pi-space-5); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); color: var(--pi-muted); font-family: var(--pi-mono, ui-monospace, monospace); font-size: var(--pi-text-xs); overflow-wrap: anywhere; }
   /* A child's conversation, over the parent's. It borrows the output viewer's
      frame because it is the same kind of thing - something opened from an
      activity row - but its body is a message list rather than a log. */
@@ -1782,8 +1784,9 @@ export class ChatView extends LitElement {
             <h2 class="activity-output-title">${output.title}</h2>
             <button type="button" class="activity-output-close" aria-label="Close output" @click=${this.closeActivityOutput}>×</button>
           </header>
+          ${output.command === undefined ? null : html`<code class="activity-output-command">${output.command}</code>`}
           ${output.empty
-            ? html`<p class="activity-output-empty">Nothing has been written to this log yet.</p>`
+            ? html`<p class="activity-output-empty">${output.running === true ? "Nothing has been written to this log yet — the task is still running; commands like rsync buffer their output until they finish." : "Nothing has been written to this log yet."}</p>`
             : html`<pre class="activity-output-body">${output.text}</pre>`}
         `}
       </dialog>
