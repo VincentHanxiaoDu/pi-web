@@ -1,5 +1,60 @@
 # @vincenthanxiaodu/pi-web
 
+## 1.202608.78
+
+### Patch Changes
+
+- c34b0a3: Add an `attachments.defaultFolder` config key to customize where chat-composer prompt attachments are saved, mirroring `uploads.defaultFolder`: set it in the global config file or Settings → General for the selected machine, override it per project in `<project>/.pi-web/config.json`, and see the workspace-effective folder in the composer's "Save to …" delivery option. Without configuration, attachments are still saved to `.pi-web/attachments`, and an explicit per-request folder keeps winning over the configured default.
+- The web/API process watches its own event loop and restarts under launchd
+  instead of hanging.
+
+  A single blocked filesystem operation (one stalled directory open) parks all
+  four libuv threadpool workers; every async fs and DNS call then queues forever
+  while the event loop idles. The process stays alive and listening — the TCP
+  handshake completes from the kernel backlog — but no request is ever answered,
+  and KeepAlive sees a healthy pid it has no reason to restart. Observed live on
+  8504: the page stopped responding for minutes until a manual restart.
+
+  Two halves, both behind this change: a heartbeat watchdog exits the process
+  when the loop stalls past a 60-second budget (launchd restarts it), and
+  managed services install with `UV_THREADPOOL_SIZE=16`, so one stalled
+  operation is a slowdown instead of an outage. The waiting slot also caps
+  itself at a hard 760px on very tall displays, where 60vh alone grew a
+  question past one glance.
+
+- 30cf9e2: An assistant reply no longer renders twice when its own tool runs land between the streamed text and the final message: the finalizer now walks back over the reply's tool rows to replace the half-done line in place.
+- f816309: Update the pi SDK to 0.84.4 (both packages together, which is what makes the earlier attempt's type conflicts disappear).
+- c9c06ea: Bound the idle-session transcript snapshot cache so a long-running session daemon no longer accumulates the parsed transcript of every session ever polled; snapshots are now evicted least-recently-used first past a small limit.
+
+  Fix status and message reads for idle sessions whose transcript file does not exist on disk (never persisted yet, or removed externally): they now serve the live runtime branch instead of failing.
+
+  Speed up polling of an idle session whose transcript file keeps growing: when another process appends to the file, only the appended bytes are read and parsed instead of the whole transcript being re-read every few seconds. Any change other than a pure append (replacement, truncation, in-place rewrite) still triggers a full re-read.
+
+  Stop polling of a never-persisted session from rescanning its session directory on every tick: transcript file resolution is now throttled, so an idle in-memory session polls at constant cost while still noticing a transcript file that appears later.
+
+  Stop a failing background poll of the selected session from churning the global error banner every few seconds: automatic poll failures are now only logged, while user-triggered refreshes still report errors.
+
+  Skip redundant work when a poll of the selected session changes nothing: a tick whose messages, status, and in-flight partial all match what is already shown no longer re-merges history, rewrites the cached transcript, or re-renders.
+
+- Quick switcher picks now move the browser to another project's workspace.
+
+  The switcher lists sessions from every project, but choosing one resolved its
+  workspace against the selected project's workspaces alone. A pick from another
+  project failed that resolution and left the workspace, project, goal panel and
+  URL describing the previous project — the goal panel showed the other
+  project's goal with live Pause and Abandon buttons, and a refresh could not
+  find the session you had just picked. Ancestry now resolves against a full
+  workspace catalogue, and a goal panel whose selected session's directory sits
+  outside the selected workspace reads as unloaded instead of borrowing that
+  workspace's records.
+
+- 7149fe4: Keep selected sessions current when another Pi process appends to their transcript, without replacing active Pi Web runtimes.
+- cf7cb35: Split Relay into a tool-agnostic foundation and an opinionated `relay-runner` software-delivery profile, make `/relay` build reviewable drafts and require explicit approval only before dispatch without pre-planning the chain, keep charters centered on goals and scope edges while project guidance owns quality, retain `/relay-worktree` as a compatibility alias, make handoff the final operational action while allowing a dispatch summary, require review, approval, and delivery before Relay completion, and treat two whole-work review attempts as normal while reserving a third for a justified contingency before human intervention.
+- 92cb024: Reorganize `src/server` by process ownership: modules loaded only by the web/API process now live under `src/server/web/`, session-daemon-only modules under `src/server/daemon/`, and modules shared by both processes under `src/server/shared/`. The former `src/sessiond/` daemon client moved to `src/server/shared/sessiondClient/`, and the mixed `src/server/sessiond/` directory was dissolved into its web and daemon sides. Entry points (`src/server/index.ts`, `src/server/sessiond.ts`) and published bin paths are unchanged; no runtime behavior changes.
+- Clock a turn from the daemon's recorded turn start, not from the viewer's first sighting. The session snapshot now carries `turnStartedAt` — the branch entry that started the turn (a custom message's timestamp, else the latest user message's) — and the transcript clock continues from it. A tab that joins mid-turn, reloads, or reconnects now shows the turn's real elapsed time instead of restarting the clock at the moment it happened to look; a daemon without the field degrades to the previous first-observation anchor.
+- 460a04b: Rework the Updates workspace tab so it presents a single prominent action: when an update or restart is available, the recommended command now sits at the top with the status notices folded in as context, installed services stay in the middle, and optional finer-control commands move to the bottom. Notices no longer carry their own command buttons, so the panel never shows two competing recommended actions.
+- The waiting slot owns the height budget once: every waiting card (goal drafts, questions) fills it as a flex column whose body scrolls internally and whose action row stays on screen. The ask-user card's submit no longer lands below the fold on tall questions.
+
 ## 1.202608.77
 
 ### Patch Changes
