@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GoalRecordSummary, Workspace } from "./api";
-import { canActOnWorkspaceGoals, goalsForSelectedWorkspace, initialAppState, type AppState, type PanelLoad } from "./appState";
+import { canActOnWorkspaceGoals, composerCwd, goalsForSelectedWorkspace, initialAppState, type AppState, type PanelLoad } from "./appState";
 import { oldSession } from "./controllers/sessionController.testSupport";
 import { machineWorkspaceKey } from "./machineKeys";
 
@@ -82,5 +82,29 @@ describe("the goals load slot", () => {
     const load = goalsForSelectedWorkspace(state);
     expect(load.state).toBe("loaded");
     expect(load.data).toEqual(rows);
+  });
+});
+
+describe("the composer's working directory", () => {
+  const session = { ...oldSession, cwd: "/repo/session-dir" };
+
+  it("prefers the selected workspace path", () => {
+    const state = { ...initialAppState(), selectedSession: session, selectedWorkspace: workspace };
+    expect(composerCwd(state)).toBe("/repo");
+  });
+
+  /**
+   * Slash commands are looked up per directory and the lookup is guarded on a
+   * non-empty cwd. A session whose workspace has not resolved (a quick-switcher
+   * pick into another project, a route restored session-first) used to hand the
+   * composer nothing, so typing "/" silently offered no commands.
+   */
+  it("falls back to the session's own directory when no workspace is resolved", () => {
+    const state = { ...initialAppState(), selectedSession: session };
+    expect(composerCwd(state)).toBe("/repo/session-dir");
+  });
+
+  it("has nothing to offer when neither is known", () => {
+    expect(composerCwd(initialAppState())).toBeUndefined();
   });
 });
