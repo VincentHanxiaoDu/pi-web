@@ -40,6 +40,8 @@ import type { ActiveSession } from "./sessionRuntimeStore.js";
 import { deterministicSessionName, fallbackSessionName, generateShortSessionName } from "./sessionNameGenerator.js";
 import { computeEditPreview, type EditPreviewResult } from "./editPreview.js";
 import { attachmentsToInlineImages, saveAttachmentsToWorkspace } from "./attachmentService.js";
+import { loadEffectiveProjectAttachmentsConfig } from "../workspaces/projectPiWebConfig.js";
+import type { PiWebConfigService } from "../configRoutes.js";
 import { parsePromptAttachments } from "../../shared/promptAttachments.js";
 import { ASK_USER_ANSWERS_CUSTOM_TYPE, SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH, SESSION_UNREAD_LIMIT } from "../../shared/apiTypes.js";
 import type {
@@ -50,6 +52,7 @@ import type {
   ExtensionDialogCloseResponse,
   ExtensionDialogKind,
   ExtensionDialogOutcome,
+  PiWebAttachmentsConfig,
   SavedPromptAttachment,
   SessionBulkArchiveResponse,
   SessionBulkDeleteArchivedResponse,
@@ -1108,6 +1111,13 @@ export interface PiSessionServiceDependencies {
    * a session is being constructed. Omit to report the startup phase alone.
    */
   catalogRefreshStatus?: CatalogRefreshStatus;
+  /**
+   * Live global config reader used to resolve workspace-effective request
+   * defaults, currently the attachments save folder. Read at request time so
+   * Settings edits apply without a daemon restart. When omitted, only the
+   * project-local layer applies on top of the built-in defaults.
+   */
+  config?: Pick<PiWebConfigService, "read">;
 }
 
 export class PiSessionService implements SessionRouteService {
@@ -1181,6 +1191,7 @@ export class PiSessionService implements SessionRouteService {
   /** The parked extension Promise resolvers behind the store's open dialogs. */
   private readonly dialogWaiters = new ExtensionDialogWaiters();
   private readonly catalogRefreshStatus: CatalogRefreshStatus | undefined;
+  private readonly config: Pick<PiWebConfigService, "read"> | undefined;
   private readonly unreadPublicationRetryInitialMs: number;
   private readonly onUnreadChanged: (() => void) | undefined;
   private readonly pendingUnreadMutations: SessionUnreadMutation[] = [];
@@ -1206,6 +1217,7 @@ export class PiSessionService implements SessionRouteService {
     this.pendingExtensionDialogStore = deps.pendingExtensionDialogStore ?? new PendingExtensionDialogStore();
     this.extensionDialogsTimeoutMs = deps.extensionDialogsTimeoutMs ?? DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS;
     this.catalogRefreshStatus = deps.catalogRefreshStatus;
+    this.config = deps.config;
     this.unreadPublicationRetryInitialMs = Math.max(
       0,
       deps.unreadPublicationRetryDelayMs ?? DEFAULT_UNREAD_PUBLICATION_RETRY_MS,
@@ -2484,7 +2496,26 @@ export class PiSessionService implements SessionRouteService {
     if (parsed.length === 0) return [];
     await this.assertWritable(ref);
     const active = await this.getActive(ref);
-    return saveAttachmentsToWorkspace(active.runtime.cwd, parsed, folder === undefined ? {} : { folder });
+    const cwd = active.runtime.cwd;
+    // An explicit request folder wins; the config lookup below is only the
+    // fallback for folder-less calls (see workspaceAttachmentsConfig).
+    const effectiveFolder = folder ?? (await this.workspaceAttachmentsConfig(cwd)).defaultFolder;
+    return saveAttachmentsToWorkspace(cwd, parsed, effectiveFolder === undefined ? {} : { folder: effectiveFolder });
+  }
+
+  /**
+   * Fallback attachments config for save requests that omit an explicit
+   * folder: the live global config merged with the session cwd's own
+   * project-local override. Unlike `workspaceEffectiveConfig` in app.ts (which
+   * resolves from the owning project's path), this lookup keys off the cwd
+   * itself, so for secondary (worktree) workspaces it cannot see the owning
+   * project's override. The composer therefore always sends the
+   * workspace-effective folder it displayed explicitly; this cwd-based
+   * resolution only governs folder-less API calls.
+   */
+  private async workspaceAttachmentsConfig(cwd: string): Promise<PiWebAttachmentsConfig> {
+    const globalConfig = this.config === undefined ? {} : (await this.config.read()).effectiveConfig;
+    return loadEffectiveProjectAttachmentsConfig(cwd, globalConfig);
   }
 
   async shell(ref: PiSessionRef, text: string): Promise<void> {
